@@ -65,6 +65,8 @@ final class Analyzer {
       static fn(DateEntry $a, DateEntry $b) => $a->start <=> $b->start
     );
 
+    $entries = $this->normalizeStitchedEntries($entries);
+
     // Group by time slot key.
     $groups = [];
     foreach ($entries as $entry) {
@@ -87,6 +89,86 @@ final class Analyzer {
     });
 
     return new RuleSet($rules);
+  }
+
+  /**
+   * Detects and normalises "stitched" entries.
+   *
+   * When the user mistakenly chains daily intervals across midnight boundaries
+   * (entry[i] ends at 23:59, entry[i+1] starts at 00:00 the next day), the
+   * chain is collapsed into per-day entries all sharing the first entry's start
+   * time and the last entry's end time.
+   *
+   * A chain is only normalised when:
+   *  - It contains at least two entries.
+   *  - The last entry does NOT end at 23:59 (a clear closing time exists).
+   *  - The implied daily slot is strictly forward (T1 < T2 in minutes).
+   *
+   * @param \Zigazou\DateRules\DateEntry[] $entries
+   *   Entries sorted by start datetime.
+   *
+   * @return \Zigazou\DateRules\DateEntry[]
+   *   Entries with stitched chains replaced by uniform per-day entries.
+   */
+  private function normalizeStitchedEntries(array $entries): array {
+    $result = [];
+    $i      = 0;
+    $n      = count($entries);
+
+    while ($i < $n) {
+      $chain = [$entries[$i]];
+      $j     = $i + 1;
+
+      while ($j < $n) {
+        $prev = $chain[count($chain) - 1];
+        $next = $entries[$j];
+
+        if (
+          $prev->end->format('H:i') === '23:59' &&
+          $next->start->format('H:i') === '00:00' &&
+          $next->start->format('Y-m-d') === $prev->end->modify('+1 day')->format('Y-m-d')
+        ) {
+          $chain[] = $next;
+          $j++;
+        }
+        else {
+          break;
+        }
+      }
+
+      $lastInChain = $chain[count($chain) - 1];
+
+      if (
+        count($chain) >= 2 &&
+        $lastInChain->end->format('H:i') !== '23:59'
+      ) {
+        $startH = (int) $chain[0]->start->format('H');
+        $startM = (int) $chain[0]->start->format('i');
+        $endH   = (int) $lastInChain->end->format('H');
+        $endM   = (int) $lastInChain->end->format('i');
+
+        if ($startH * 60 + $startM < $endH * 60 + $endM) {
+          $current  = $chain[0]->getDate();
+          $lastDate = $lastInChain->getDate();
+
+          while ($current->format('Y-m-d') <= $lastDate->format('Y-m-d')) {
+            $result[] = new DateEntry(
+              $current->setTime($startH, $startM),
+              $current->setTime($endH, $endM),
+            );
+            $current = $current->modify('+1 day');
+          }
+
+          $i = $j;
+          continue;
+        }
+      }
+
+      $result[] = $entries[$i];
+      $i++;
+    }
+
+    return $result;
   }
 
   /**
@@ -131,6 +213,12 @@ final class Analyzer {
     $span             = (int) $firstDate->diff($lastDate)->days + 1;
     $density          = count($dates) / $span;
     $distinctWeekdays = $this->distinctWeekdays($dates);
+
+    // Step 0 – Every day in the span is present: unambiguous daily range.
+    // Requires span ≥ 2 so that single-day entries keep their weekday format.
+    if ($span >= 2 && count($dates) === $span) {
+      return [new DateRangeRule($firstDate, $lastDate, [$timeSlot], [])];
+    }
 
     // Step 1 – Direct daily range: all 7 weekdays present and density is high
     // enough. Requiring exactly 7 distinct weekdays ensures that a
