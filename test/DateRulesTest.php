@@ -60,6 +60,9 @@ class DateRulesTest extends TestCase {
 
   /**
    * Tests formatting of 'liste-date-1.txt'.
+   *
+   * Classical event schedule with exceptions, covering multiple weekdays and
+   * weekends.
    */
   public function testListeDate1(): void {
     $expected = implode("\n", [
@@ -76,6 +79,9 @@ class DateRulesTest extends TestCase {
 
   /**
    * Tests formatting of 'liste-date-2.txt'.
+   *
+   * Multiple date ranges with different time slots, covering various weekdays
+   * and weekends.
    */
   public function testListeDate2(): void {
     $expected = implode("\n", [
@@ -91,6 +97,8 @@ class DateRulesTest extends TestCase {
 
   /**
    * Tests formatting of 'liste-date-3.txt'.
+   *
+   * Single-day events with different time slots, covering various weekdays.
    */
   public function testListeDate3(): void {
     $expected = implode("\n", [
@@ -104,6 +112,8 @@ class DateRulesTest extends TestCase {
 
   /**
    * Tests formatting of 'liste-date-4.txt'.
+   *
+   * Single date range with a single time slot, covering all weekdays.
    */
   public function testListeDate4(): void {
     $expected = 'Du 10 au 14 juillet 2026 : tous les jours de 10h à 12h.';
