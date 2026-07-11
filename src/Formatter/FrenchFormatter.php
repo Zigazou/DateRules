@@ -14,14 +14,16 @@ use Zigazou\DateRules\TimeSlot;
  * Formats a RuleSet as French human-readable text.
  *
  * Example outputs:
- *   Lundi, mercredi, jeudi, vendredi, samedi et dimanche de 13h30 à 18h15,
- *       du 13 avril 2026 au 4 janvier 2027 (sauf le 15 août 2026)
+ *   Du 13 avril 2026 au 4 janvier 2027 : lundi, mercredi, jeudi, vendredi,
+ *       samedi et dimanche de 13h30 à 18h15 (sauf le 15 août 2026).
  *
- *   Samedi et dimanche de 10h à 12h30, du 18 avril 2026 au 4 janvier 2027
+ *   Du 18 avril 2026 au 3 janvier 2027 : samedi et dimanche de 10h à 12h30.
  *
- *   Du 1er au 30 juillet 2026 de 23h à 23h59
+ *   Du 1er au 30 juillet 2026 : tous les jours de 23h à 23h59.
  *
- *   Vendredi et samedi de 21h30 à 22h30, du 4 au 26 septembre 2026
+ *   Du 4 au 26 septembre 2026 : vendredi et samedi de 21h30 à 22h30.
+ *
+ *   Vendredi 10 juillet 2026, de 10h à 11h.
  */
 final class FrenchFormatter implements FormatterInterface {
   private const WEEKDAY_NAMES = [
@@ -90,24 +92,33 @@ final class FrenchFormatter implements FormatterInterface {
    *   The formatted rule string.
    */
   private function formatWeekdayRule(WeekdayRule $rule): string {
-    $days   = $this->formatWeekdays($rule->weekdays);
     $slots  = $this->formatTimeSlots($rule->timeSlots);
-    $range  = $this->formatDateRangeLabel($rule->startDate, $rule->endDate);
     $except = $this->formatExceptions($rule->exceptions);
 
-    // "Lundi, mercredi et vendredi de 13h30 à 18h15, du 1er avril au 30 juin
-    // 2026"
-    $result = ucfirst($days) . ' de ' . $slots;
+    // Single day: "Vendredi 10 juillet 2026, de 10h à 11h.".
+    if ($rule->startDate->format('Y-m-d') === $rule->endDate->format('Y-m-d')) {
+      $dayName = ucfirst(self::WEEKDAY_NAMES[(int) $rule->startDate->format('N')]);
+      $result  = $dayName . ' ' . $this->formatFullDate($rule->startDate) . ', de ' . $slots;
 
-    if ($range !== '') {
-      $result .= ', ' . $range;
+      if ($except !== '') {
+        $result .= ' (' . $except . ')';
+      }
+
+      return $result . '.';
     }
+
+    // Multi-day: "Du 13 avril 2026 au 4 janvier 2027 : lundi, mercredi, ...
+    // de 13h30 à 18h15 (sauf ...).".
+    $days  = $this->formatWeekdays($rule->weekdays);
+    $range = $this->formatDateRangeLabel($rule->startDate, $rule->endDate);
+
+    $result = ucfirst($range) . ' : ' . $days . ' de ' . $slots;
 
     if ($except !== '') {
       $result .= ' (' . $except . ')';
     }
 
-    return $result;
+    return $result . '.';
   }
 
   /**
@@ -124,14 +135,14 @@ final class FrenchFormatter implements FormatterInterface {
     $slots  = $this->formatTimeSlots($rule->timeSlots);
     $except = $this->formatExceptions($rule->exceptions);
 
-    // "Du 1er au 30 juillet 2026 de 23h à 23h59"
-    $result = ucfirst($range) . ' de ' . $slots;
+    // "Du 1er au 30 juillet 2026 : tous les jours de 23h à 23h59."
+    $result = ucfirst($range) . ' : tous les jours de ' . $slots;
 
     if ($except !== '') {
       $result .= ' (' . $except . ')';
     }
 
-    return $result;
+    return $result . '.';
   }
 
   // =========================================================================
