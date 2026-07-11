@@ -7,54 +7,59 @@ namespace Zigazou\DateRules\Parser;
 use Zigazou\DateRules\DateEntry;
 
 /**
- * Parses date interval lists where each line has the form:
+ * Parses date interval lists.
  *
- *   YYYY-MM-DD HH:MM|YYYY-MM-DD HH:MM
+ * In the list each line has the form:
+ *
+ *   YYYY-MM-DD HH:MM|YYYY-MM-DD HH:MM.
  *
  * Lines that are empty or start with '#' are silently ignored.
  * Throws \InvalidArgumentException on malformed input.
  */
-final class PipeSeparatedParser implements ParserInterface
-{
-    public function parse(string $input): array
-    {
-        $entries = [];
+final class PipeSeparatedParser implements ParserInterface {
 
-        foreach (explode("\n", $input) as $lineNumber => $rawLine) {
-            $line = trim($rawLine);
+  /**
+   * {@inheritdoc}
+   */
+  public function parse(string $input): array {
+    $entries = [];
 
-            if ($line === '' || str_starts_with($line, '#')) {
-                continue;
-            }
+    foreach (explode("\n", $input) as $lineNumber => $rawLine) {
+      $line = trim($rawLine);
 
-            $parts = explode('|', $line, 2);
+      if ($line === '' || str_starts_with($line, '#')) {
+        continue;
+      }
 
-            if (count($parts) !== 2) {
-                throw new \InvalidArgumentException(
-                    sprintf(
-                        "Line %d: expected 'START|END' format, got: %s",
-                        $lineNumber + 1,
-                        $line,
-                    ),
-                );
-            }
+      $parts = explode('|', $line, 2);
 
-            $start = \DateTimeImmutable::createFromFormat('Y-m-d H:i', trim($parts[0]));
-            $end   = \DateTimeImmutable::createFromFormat('Y-m-d H:i', trim($parts[1]));
+      if (count($parts) !== 2) {
+        throw new \InvalidArgumentException(
+          sprintf(
+            "Line %d: expected 'START|END' format, got: %s",
+            $lineNumber + 1,
+            $line,
+          ),
+        );
+      }
 
-            if ($start === false || $end === false) {
-                throw new \InvalidArgumentException(
-                    sprintf(
-                        "Line %d: invalid datetime (expected 'YYYY-MM-DD HH:MM'): %s",
-                        $lineNumber + 1,
-                        $line,
-                    ),
-                );
-            }
+      $start = \DateTimeImmutable::createFromFormat('Y-m-d H:i', trim($parts[0]));
+      $end   = \DateTimeImmutable::createFromFormat('Y-m-d H:i', trim($parts[1]));
 
-            $entries[] = new DateEntry($start, $end);
-        }
+      if ($start === FALSE || $end === FALSE) {
+        throw new \InvalidArgumentException(
+          sprintf(
+            "Line %d: invalid datetime (expected 'YYYY-MM-DD HH:MM'): %s",
+            $lineNumber + 1,
+            $line,
+          ),
+        );
+      }
 
-        return $entries;
+      $entries[] = new DateEntry($start, $end);
     }
+
+    return $entries;
+  }
+
 }

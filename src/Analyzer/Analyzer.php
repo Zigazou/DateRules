@@ -54,6 +54,9 @@ final class Analyzer {
    *
    * @param \Zigazou\DateRules\DateEntry[] $entries
    *   All input entries, sorted by start date.
+   *
+   * @return \Zigazou\DateRules\RuleSet
+   *   The minimal rule set covering all input entries.
    */
   public function analyze(array $entries): RuleSet {
     usort(
@@ -76,8 +79,8 @@ final class Analyzer {
 
     // Sort rules chronologically by their start date.
     usort($rules, static function (RuleInterface $a, RuleInterface $b): int {
-      /** @var \Zigazou\DateRules\Rule\WeekdayRule|DateRangeRule $a */
-      /** @var \Zigazou\DateRules\Rule\WeekdayRule|DateRangeRule $b */
+      /** @var \Zigazou\DateRules\Rule\WeekdayRule|\Zigazou\DateRules\Rule\DateRangeRule $a */
+      /** @var \Zigazou\DateRules\Rule\WeekdayRule|\Zigazou\DateRules\Rule\DateRangeRule $b */
       return $a->startDate <=> $b->startDate;
     });
 
@@ -113,7 +116,7 @@ final class Analyzer {
    * of both.
    *
    * @param \DateTimeImmutable[] $dates
-   *   Sorted, unique calendar dates (midnight)
+   *   Sorted, unique calendar dates (midnight).
    * @param \Zigazou\DateRules\TimeSlot $timeSlot
    *   Time slot shared by all dates.
    *
@@ -152,9 +155,9 @@ final class Analyzer {
       $remaining = $this->datesOutsideRange($dates, $runFirst, $runLast);
 
       return array_merge(
-            [new DateRangeRule($runFirst, $runLast, [$timeSlot], $runExceptions)],
-            $this->analyzeDates($remaining, $timeSlot),
-        );
+        [new DateRangeRule($runFirst, $runLast, [$timeSlot], $runExceptions)],
+        $this->analyzeDates($remaining, $timeSlot),
+      );
     }
 
     // Step 3 – Fall back to a weekly pattern.
@@ -166,8 +169,13 @@ final class Analyzer {
   // =========================================================================
 
   /**
+   * Extracts sorted unique calendar dates from a list of entries.
+   *
    * @param \Zigazou\DateRules\DateEntry[] $entries
-   * @return \DateTimeImmutable[] Sorted unique calendar dates (midnight)
+   *   The date entries to extract dates from.
+   *
+   * @return \DateTimeImmutable[]
+   *   Sorted unique calendar dates (midnight).
    */
   private function extractSortedDates(array $entries): array {
     $dateMap = [];
@@ -184,8 +192,10 @@ final class Analyzer {
    * Returns the distinct ISO day-of-week numbers present in $dates.
    *
    * @param \DateTimeImmutable[] $dates
+   *   The dates to analyze.
    *
    * @return int[]
+   *   The distinct ISO 8601 day-of-week numbers present.
    */
   private function distinctWeekdays(array $dates): array {
     $weekdays = [];
@@ -199,9 +209,15 @@ final class Analyzer {
   /**
    * Returns all calendar dates in [$start, $end] that are absent from $actual.
    *
+   * @param \DateTimeImmutable $start
+   *   The start of the range (inclusive).
+   * @param \DateTimeImmutable $end
+   *   The end of the range (inclusive).
    * @param \DateTimeImmutable[] $actual
+   *   The actual dates present in the range.
    *
    * @return \DateTimeImmutable[]
+   *   The missing calendar dates.
    */
   private function findMissingDates(
     \DateTimeImmutable $start,
@@ -209,9 +225,9 @@ final class Analyzer {
     array $actual,
   ): array {
     $actualSet = array_flip(array_map(
-          static fn(\DateTimeImmutable $d) => $d->format('Y-m-d'),
-          $actual,
-      ));
+      static fn(\DateTimeImmutable $d) => $d->format('Y-m-d'),
+      $actual,
+    ));
 
     $missing = [];
     $current = $start;
@@ -235,6 +251,7 @@ final class Analyzer {
    *   Sorted.
    *
    * @return \DateTimeImmutable[]|null
+   *   The longest consecutive run, or null if all runs have length 1.
    */
   private function findLongestConsecutiveRun(array $dates): ?array {
     if (count($dates) < 2) {
@@ -276,6 +293,7 @@ final class Analyzer {
    *   End of the range (inclusive).
    *
    * @return \DateTimeImmutable[]
+   *   The dates outside the specified range.
    */
   private function datesOutsideRange(
     array $dates,
@@ -285,11 +303,13 @@ final class Analyzer {
     $start = $rangeStart->format('Y-m-d');
     $end   = $rangeEnd->format('Y-m-d');
 
-    return array_values(array_filter(
-          $dates,
-          static fn(\DateTimeImmutable $d) =>
-                $d->format('Y-m-d') < $start || $d->format('Y-m-d') > $end,
-      ));
+    return array_values(
+      array_filter(
+        $dates,
+        static fn(\DateTimeImmutable $d) =>
+          $d->format('Y-m-d') < $start || $d->format('Y-m-d') > $end,
+      )
+    );
   }
 
   // =========================================================================
@@ -308,6 +328,7 @@ final class Analyzer {
    *   Time slot shared by all dates.
    *
    * @return \Zigazou\DateRules\Rule\WeekdayRule
+   *   The constructed WeekdayRule.
    */
   private function buildWeekdayRule(array $dates, TimeSlot $timeSlot): WeekdayRule {
     $weekdays = $this->distinctWeekdays($dates);
@@ -318,9 +339,9 @@ final class Analyzer {
 
     $expectedDates = $this->generateDatesForWeekdays($weekdays, $firstDate, $lastDate);
     $actualSet     = array_flip(array_map(
-          static fn(\DateTimeImmutable $d) => $d->format('Y-m-d'),
-          $dates,
-      ));
+      static fn(\DateTimeImmutable $d) => $d->format('Y-m-d'),
+      $dates,
+    ));
 
     $exceptions = [];
     foreach ($expectedDates as $expected) {
@@ -329,14 +350,20 @@ final class Analyzer {
       }
     }
 
-    return new WeekdayRule($weekdays, [$timeSlot], $firstDate, $lastDate, $exceptions);
+    return new WeekdayRule(
+      $weekdays,
+      [$timeSlot],
+      $firstDate,
+      $lastDate,
+      $exceptions
+    );
   }
 
   /**
    * Generates all dates in [$start, $end] that fall on any $weekdays.
    *
    * @param int[] $weekdays
-   *   ISO 8601 weekday numbers (1 = Mon … 7 = Sun)
+   *   ISO 8601 weekday numbers (1 = Mon ... 7 = Sun).
    * @param \DateTimeImmutable $start
    *   Start of the range (inclusive).
    * @param \DateTimeImmutable $end
@@ -408,10 +435,10 @@ final class Analyzer {
 
       // Sort time slots by start time.
       uasort(
-            $allSlots,
-            static fn(TimeSlot $a, TimeSlot $b) =>
-                    $a->startInMinutes() <=> $b->startInMinutes(),
-        );
+        $allSlots,
+        static fn(TimeSlot $a, TimeSlot $b) =>
+          $a->startInMinutes() <=> $b->startInMinutes(),
+      );
 
       $merged[] = new WeekdayRule(
         $base->weekdays,
