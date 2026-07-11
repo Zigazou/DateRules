@@ -89,10 +89,6 @@ final class Analyzer {
     return new RuleSet($rules);
   }
 
-  // =========================================================================
-  // Group analysis
-  // =========================================================================
-
   /**
    * Analyzes a group of entries that share the same time slot.
    *
@@ -165,10 +161,6 @@ final class Analyzer {
     // Step 3 – Fall back to a weekly pattern.
     return [$this->buildWeekdayRule($dates, $timeSlot)];
   }
-
-  // =========================================================================
-  // Date helpers
-  // =========================================================================
 
   /**
    * Extracts sorted unique calendar dates from a list of entries.
@@ -314,10 +306,6 @@ final class Analyzer {
     );
   }
 
-  // =========================================================================
-  // WeekdayRule construction
-  // =========================================================================
-
   /**
    * Builds a WeekdayRule from a set of dates.
    *
@@ -393,10 +381,6 @@ final class Analyzer {
     return $dates;
   }
 
-  // =========================================================================
-  // Merging
-  // =========================================================================
-
   /**
    * Merges WeekdayRules that share the same weekday set and date range.
    *
@@ -453,10 +437,6 @@ final class Analyzer {
 
     return $merged;
   }
-
-  // =========================================================================
-  // Grouping
-  // =========================================================================
 
   /**
    * Groups WeekdayRules whose weekdays form a subset/superset relationship.
