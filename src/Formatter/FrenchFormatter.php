@@ -6,6 +6,7 @@ namespace Zigazou\DateRules\Formatter;
 
 use Zigazou\DateRules\Rule\DateRangeRule;
 use Zigazou\DateRules\Rule\RuleInterface;
+use Zigazou\DateRules\Rule\WeekdayGroupRule;
 use Zigazou\DateRules\Rule\WeekdayRule;
 use Zigazou\DateRules\RuleSet;
 use Zigazou\DateRules\TimeSlot;
@@ -61,10 +62,6 @@ final class FrenchFormatter implements FormatterInterface {
     ));
   }
 
-  // =========================================================================
-  // Rule-level formatting
-  // =========================================================================
-
   /**
    * Formats a single rule as a human-readable string.
    *
@@ -76,9 +73,10 @@ final class FrenchFormatter implements FormatterInterface {
    */
   private function formatRule(RuleInterface $rule): string {
     return match (TRUE) {
-      $rule instanceof WeekdayRule   => $this->formatWeekdayRule($rule),
-      $rule instanceof DateRangeRule => $this->formatDateRangeRule($rule),
-      default                        => '',
+      $rule instanceof WeekdayGroupRule => $this->formatWeekdayGroupRule($rule),
+      $rule instanceof WeekdayRule      => $this->formatWeekdayRule($rule),
+      $rule instanceof DateRangeRule    => $this->formatDateRangeRule($rule),
+      default                           => '',
     };
   }
 
@@ -97,8 +95,21 @@ final class FrenchFormatter implements FormatterInterface {
 
     // Single day: "Vendredi 10 juillet 2026, de 10h à 11h.".
     if ($rule->startDate->format('Y-m-d') === $rule->endDate->format('Y-m-d')) {
-      $dayName = ucfirst(self::WEEKDAY_NAMES[(int) $rule->startDate->format('N')]);
-      $result  = $dayName . ' ' . $this->formatFullDate($rule->startDate) . ', de ' . $slots;
+      $dayName = ucfirst(
+        self::WEEKDAY_NAMES[(int) $rule->startDate->format('N')]
+      );
+
+      // All-day slot (00:00–23:59): "Mercredi 15 juillet 2026, toute la
+      // journée.".
+      if ($this->isAllDay($rule->timeSlots)) {
+        return $dayName
+          . ' ' . $this->formatFullDate($rule->startDate)
+          . ', toute la journée.';
+      }
+
+      $result = $dayName
+        . ' ' . $this->formatFullDate($rule->startDate)
+        . ', de ' . $slots;
 
       if ($except !== '') {
         $result .= ' (' . $except . ')';
@@ -119,6 +130,38 @@ final class FrenchFormatter implements FormatterInterface {
     }
 
     return $result . '.';
+  }
+
+  /**
+   * Formats a WeekdayGroupRule as a multi-line French string.
+   *
+   * @param \Zigazou\DateRules\Rule\WeekdayGroupRule $rule
+   *   The grouped weekday rule to format.
+   *
+   * @return string
+   *   The formatted rule string.
+   */
+  private function formatWeekdayGroupRule(WeekdayGroupRule $rule): string {
+    $range = $this->formatDateRangeLabel($rule->startDate, $rule->endDate);
+    $lines = [ucfirst($range) . ' :'];
+    $count = count($rule->subRules);
+
+    foreach ($rule->subRules as $idx => $subRule) {
+      $days   = $this->formatWeekdays($subRule->weekdays);
+      $slots  = $this->formatTimeSlots($subRule->timeSlots);
+      $except = $this->formatExceptions($subRule->exceptions);
+
+      $line = '  - ' . $days . ' de ' . $slots;
+      if ($except !== '') {
+        $line .= ' (' . $except . ')';
+      }
+      if ($idx < $count - 1) {
+        $line .= '.';
+      }
+      $lines[] = $line;
+    }
+
+    return implode("\n", $lines);
   }
 
   /**
@@ -144,10 +187,6 @@ final class FrenchFormatter implements FormatterInterface {
 
     return $result . '.';
   }
-
-  // =========================================================================
-  // Component formatters
-  // =========================================================================
 
   /**
    * Formats a list of weekday numbers as a French-language string.
@@ -189,10 +228,27 @@ final class FrenchFormatter implements FormatterInterface {
       return $parts[0];
     }
 
-    // "de 10h à 12h30 et de 13h30 à 18h15"
+    // "10h à 12h30 et de 13h30 à 18h15" (calling code prepends "de ")
     $last = array_pop($parts);
 
-    return 'de ' . implode(', de ', $parts) . ' et de ' . $last;
+    return implode(', de ', $parts) . ' et de ' . $last;
+  }
+
+  /**
+   * Returns TRUE when the time slots represent a full day (00:00–23:59).
+   *
+   * @param \Zigazou\DateRules\TimeSlot[] $timeSlots
+   *   The time slots to check.
+   *
+   * @return bool
+   *   TRUE if there is exactly one slot covering 00:00 to 23:59.
+   */
+  private function isAllDay(array $timeSlots): bool {
+    return count($timeSlots) === 1
+      && $timeSlots[0]->startHour === 0
+      && $timeSlots[0]->startMinute === 0
+      && $timeSlots[0]->endHour === 23
+      && $timeSlots[0]->endMinute === 59;
   }
 
   /**
@@ -207,6 +263,10 @@ final class FrenchFormatter implements FormatterInterface {
    *   The formatted time string (e.g. "13h30" or "10h").
    */
   private function formatTime(int $hour, int $minute): string {
+    if ($hour === 23 && $minute === 59) {
+      return 'minuit';
+    }
+
     return $minute === 0
       ? $hour . 'h'
       : $hour . 'h' . sprintf('%02d', $minute);
@@ -283,10 +343,6 @@ final class FrenchFormatter implements FormatterInterface {
     return 'sauf ' . $this->joinFrench($labels);
   }
 
-  // =========================================================================
-  // Date helpers
-  // =========================================================================
-
   /**
    * Formats a full date as a French-language string (e.g. "4 janvier 2027").
    *
@@ -330,10 +386,6 @@ final class FrenchFormatter implements FormatterInterface {
 
     return $day === 1 ? '1er' : (string) $day;
   }
-
-  // =========================================================================
-  // French list joining
-  // =========================================================================
 
   /**
    * Joins a list of strings with ", " and "et" before the last item.

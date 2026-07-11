@@ -7,6 +7,7 @@ namespace Zigazou\DateRules\Analyzer;
 use Zigazou\DateRules\DateEntry;
 use Zigazou\DateRules\Rule\DateRangeRule;
 use Zigazou\DateRules\Rule\RuleInterface;
+use Zigazou\DateRules\Rule\WeekdayGroupRule;
 use Zigazou\DateRules\Rule\WeekdayRule;
 use Zigazou\DateRules\RuleSet;
 use Zigazou\DateRules\TimeSlot;
@@ -76,6 +77,7 @@ final class Analyzer {
     }
 
     $rules = $this->mergeWeekdayRules($rules);
+    $rules = $this->groupCompatibleWeekdayRules($rules);
 
     // Sort rules chronologically by their start date.
     usort($rules, static function (RuleInterface $a, RuleInterface $b): int {
@@ -450,6 +452,170 @@ final class Analyzer {
     }
 
     return $merged;
+  }
+
+  // =========================================================================
+  // Grouping
+  // =========================================================================
+
+  /**
+   * Groups WeekdayRules whose weekdays form a subset/superset relationship.
+   *
+   * When rule B's weekdays are a proper subset of rule A's weekdays AND
+   * B's date range is contained within A's date range, the two rules are
+   * combined into a WeekdayGroupRule:
+   *  - An outer sub-rule covers A's weekdays minus B's weekdays with A's slots.
+   *  - An inner sub-rule covers B's weekdays with combined slots from A and B.
+   * Exceptions are distributed by weekday.
+   *
+   * @param \Zigazou\DateRules\Rule\RuleInterface[] $rules
+   *   List of rules to process.
+   *
+   * @return \Zigazou\DateRules\Rule\RuleInterface[]
+   *   List of rules after grouping.
+   */
+  private function groupCompatibleWeekdayRules(array $rules): array {
+    $weekdayRules = [];
+    $otherRules   = [];
+
+    foreach ($rules as $rule) {
+      if ($rule instanceof WeekdayRule) {
+        $weekdayRules[] = $rule;
+      }
+      else {
+        $otherRules[] = $rule;
+      }
+    }
+
+    $n      = count($weekdayRules);
+    $used   = array_fill(0, $n, FALSE);
+    $result = [];
+
+    for ($i = 0; $i < $n; $i++) {
+      if ($used[$i]) {
+        continue;
+      }
+
+      $ruleA     = $weekdayRules[$i];
+      $setA      = array_flip($ruleA->weekdays);
+      $subRuleBs = [];
+      $usedJ     = [];
+
+      for ($j = 0; $j < $n; $j++) {
+        if ($i === $j || $used[$j]) {
+          continue;
+        }
+
+        $ruleB = $weekdayRules[$j];
+
+        // B must have fewer weekdays than A (proper subset).
+        if (count($ruleB->weekdays) >= count($ruleA->weekdays)) {
+          continue;
+        }
+
+        // Every weekday in B must also be in A.
+        $bSubsetOfA = TRUE;
+        foreach ($ruleB->weekdays as $day) {
+          if (!isset($setA[$day])) {
+            $bSubsetOfA = FALSE;
+            break;
+          }
+        }
+        if (!$bSubsetOfA) {
+          continue;
+        }
+
+        // B's date range must be contained within A's date range.
+        if (
+          $ruleB->startDate->format('Y-m-d') < $ruleA->startDate->format('Y-m-d') ||
+          $ruleB->endDate->format('Y-m-d') > $ruleA->endDate->format('Y-m-d')
+        ) {
+          continue;
+        }
+
+        $subRuleBs[] = $ruleB;
+        $usedJ[]     = $j;
+      }
+
+      // Mark this rule (and any paired rules) as consumed.
+      $used[$i] = TRUE;
+      foreach ($usedJ as $j) {
+        $used[$j] = TRUE;
+      }
+
+      if (empty($subRuleBs)) {
+        $result[] = $ruleA;
+        continue;
+      }
+
+      // Collect the union of all inner (B) weekdays.
+      $innerWeekdaySet = [];
+      foreach ($subRuleBs as $ruleB) {
+        foreach ($ruleB->weekdays as $day) {
+          $innerWeekdaySet[$day] = TRUE;
+        }
+      }
+
+      // Outer weekdays: A minus all inner weekdays.
+      $outerWeekdays = array_values(array_filter(
+        $ruleA->weekdays,
+        static fn(int $d) => !isset($innerWeekdaySet[$d]),
+      ));
+
+      $groupSubRules = [];
+
+      // Sub-rule for outer weekdays (only A's slots, exceptions filtered).
+      if (!empty($outerWeekdays)) {
+        $outerExceptions = array_values(array_filter(
+          $ruleA->exceptions,
+          static fn(\DateTimeImmutable $d) =>
+            in_array((int) $d->format('N'), $outerWeekdays, TRUE),
+        ));
+
+        $groupSubRules[] = new WeekdayRule(
+          $outerWeekdays,
+          $ruleA->timeSlots,
+          $ruleA->startDate,
+          $ruleA->endDate,
+          $outerExceptions,
+        );
+      }
+
+      // Sub-rules for inner weekdays (combined slots, exceptions filtered).
+      foreach ($subRuleBs as $ruleB) {
+        $innerExceptions = array_values(array_filter(
+          $ruleA->exceptions,
+          static fn(\DateTimeImmutable $d) =>
+            in_array((int) $d->format('N'), $ruleB->weekdays, TRUE),
+        ));
+
+        $allSlots = [];
+        foreach (array_merge($ruleA->timeSlots, $ruleB->timeSlots) as $slot) {
+          $allSlots[$slot->key()] = $slot;
+        }
+        uasort(
+          $allSlots,
+          static fn(TimeSlot $a, TimeSlot $b) =>
+            $a->startInMinutes() <=> $b->startInMinutes(),
+        );
+
+        $groupSubRules[] = new WeekdayRule(
+          $ruleB->weekdays,
+          array_values($allSlots),
+          $ruleA->startDate,
+          $ruleA->endDate,
+          $innerExceptions,
+        );
+      }
+
+      $result[] = new WeekdayGroupRule(
+        $groupSubRules,
+        $ruleA->startDate,
+        $ruleA->endDate,
+      );
+    }
+
+    return array_merge($result, $otherRules);
   }
 
 }
