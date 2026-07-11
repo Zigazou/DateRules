@@ -155,9 +155,6 @@ final class FrenchFormatter implements FormatterInterface {
       if ($except !== '') {
         $line .= ' (' . $except . ')';
       }
-      if ($idx < $count - 1) {
-        $line .= '.';
-      }
       $lines[] = $line;
     }
 
