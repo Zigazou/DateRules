@@ -188,4 +188,4 @@ vendor/bin/phpunit
 
 ## License
 
-BSD
+BSD-3-Clause

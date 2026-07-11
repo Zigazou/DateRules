@@ -2,7 +2,7 @@
     "name": "zigazou/date-rules",
     "description": "Infer rules from a list of dates",
     "type": "library",
-    "license": "BSD",
+    "license": "BSD-3-Clause",
     "autoload": {
         "psr-4": {
             "Zigazou\\DateRules\\": "src/"
