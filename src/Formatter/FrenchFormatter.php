@@ -143,7 +143,7 @@ final class FrenchFormatter implements FormatterInterface {
    */
   private function formatWeekdayGroupRule(WeekdayGroupRule $rule): string {
     $range = $this->formatDateRangeLabel($rule->startDate, $rule->endDate);
-    $lines = [ucfirst($range) . ' :'];
+    $lines = [ucfirst($range) . ' :'];
     $count = count($rule->subRules);
 
     foreach ($rule->subRules as $idx => $subRule) {
@@ -151,7 +151,7 @@ final class FrenchFormatter implements FormatterInterface {
       $slots  = $this->formatTimeSlots($subRule->timeSlots);
       $except = $this->formatExceptions($subRule->exceptions);
 
-      $line = '  - ' . $days . ' de ' . $slots;
+      $line = '- ' . $days . ' de ' . $slots;
       if ($except !== '') {
         $line .= ' (' . $except . ')';
       }

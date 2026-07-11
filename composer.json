@@ -8,11 +8,19 @@
             "Zigazou\\DateRules\\": "src/"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "Zigazou\\DateRules\\": "test/",
+            "Zigazou\\DateRules\\Tests\\": "test/"
+        }
+    },
     "authors": [
         {
             "name": "Frédéric BISSON",
             "email": "zigazou@protonmail.com"
         }
     ],
-    "require": {}
+    "require-dev": {
+        "phpunit/phpunit": "^13.2"
+    }
 }
