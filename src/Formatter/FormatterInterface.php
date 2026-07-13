@@ -18,10 +18,12 @@ interface FormatterInterface {
    *
    * @param \Zigazou\DateRules\RuleSet $ruleSet
    *   The rule set to format.
+   * @param bool $outputHtml
+   *   Whether to output HTML or plain text.
    *
    * @return string
    *   A human-readable string describing the rule set.
    */
-  public function format(RuleSet $ruleSet): string;
+  public function format(RuleSet $ruleSet, bool $outputHtml = FALSE): string;
 
 }

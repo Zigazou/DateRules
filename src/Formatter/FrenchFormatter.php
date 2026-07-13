@@ -55,11 +55,47 @@ final class FrenchFormatter implements FormatterInterface {
   /**
    * {@inheritdoc}
    */
-  public function format(RuleSet $ruleSet): string {
-    return implode("\n", array_map(
+  public function format(RuleSet $ruleSet, bool $outputHtml = FALSE): string {
+    $text = implode("\n", array_map(
       fn(RuleInterface $rule) => $this->formatRule($rule),
       $ruleSet->rules,
     ));
+
+    if (!$outputHtml) {
+      return $text;
+    }
+
+    // Convert plain text to a minimal HTML representation. Paragraphs are
+    // created for regular lines and lists for lines starting with "- ".
+    $lines = explode("\n", $text);
+    $out = [];
+    $inList = FALSE;
+
+    foreach ($lines as $line) {
+      if (str_starts_with($line, '- ')) {
+        if (!$inList) {
+          $out[] = '<ul>';
+          $inList = TRUE;
+        }
+
+        $item = substr($line, 2);
+        $out[] = '<li>' . htmlspecialchars($item, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</li>';
+        continue;
+      }
+
+      if ($inList) {
+        $out[] = '</ul>';
+        $inList = FALSE;
+      }
+
+      $out[] = '<p>' . htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p>';
+    }
+
+    if ($inList) {
+      $out[] = '</ul>';
+    }
+
+    return implode("", $out);
   }
 
   /**
