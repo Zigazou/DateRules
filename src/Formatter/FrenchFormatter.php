@@ -88,7 +88,15 @@ final class FrenchFormatter implements FormatterInterface {
         $inList = FALSE;
       }
 
-      $out[] = '<p>' . htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p>';
+      // A line using the weekday-range format ("... : du X au Y de ...") is
+      // rendered as an unclosed <p> with the second colon softened to a comma.
+      if (preg_match('/ : du .+ au .+ : de /', $line)) {
+        $html = preg_replace('/ : de (.+\.)$/', ', de $1', $line);
+        $out[] = '<p>' . htmlspecialchars((string) $html, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+      }
+      else {
+        $out[] = '<p>' . htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p>';
+      }
     }
 
     if ($inList) {
@@ -159,10 +167,11 @@ final class FrenchFormatter implements FormatterInterface {
     $days  = $this->formatWeekdays($rule->weekdays);
     $range = $this->formatDateRangeLabel($rule->startDate, $rule->endDate);
 
-    $result = ucfirst($range) . ' : ' . $days . ' de ' . $slots;
-
     if ($except !== '') {
-      $result .= ' (' . $except . ')';
+      $result = ucfirst($range) . ' : ' . $days . ' de ' . $slots . ' (' . $except . ')';
+    }
+    else {
+      $result = ucfirst($range) . ' : ' . $days . ' de ' . $slots;
     }
 
     return $result . '.';
@@ -187,9 +196,11 @@ final class FrenchFormatter implements FormatterInterface {
       $slots  = $this->formatTimeSlots($subRule->timeSlots);
       $except = $this->formatExceptions($subRule->exceptions);
 
-      $line = '- ' . $days . ' de ' . $slots;
       if ($except !== '') {
-        $line .= ' (' . $except . ')';
+        $line = '- ' . $days . ' de ' . $slots . ' (' . $except . ')';
+      }
+      else {
+        $line = '- ' . $days . ' : de ' . $slots;
       }
       $lines[] = $line;
     }
@@ -224,6 +235,9 @@ final class FrenchFormatter implements FormatterInterface {
   /**
    * Formats a list of weekday numbers as a French-language string.
    *
+   * When all weekdays form a strictly consecutive sequence of 5 or more days,
+   * a compact range "du X au Y" is returned instead of enumerating every name.
+   *
    * @param int[] $weekdays
    *   ISO 8601 weekday numbers.
    *
@@ -231,6 +245,24 @@ final class FrenchFormatter implements FormatterInterface {
    *   The formatted weekdays string.
    */
   private function formatWeekdays(array $weekdays): string {
+    if (count($weekdays) >= 5) {
+      $sorted = $weekdays;
+      sort($sorted);
+
+      $consecutive = TRUE;
+      for ($i = 1, $c = count($sorted); $i < $c; $i++) {
+        if ($sorted[$i] !== $sorted[$i - 1] + 1) {
+          $consecutive = FALSE;
+          break;
+        }
+      }
+
+      if ($consecutive) {
+        return 'du ' . self::WEEKDAY_NAMES[$sorted[0]]
+          . ' au ' . self::WEEKDAY_NAMES[$sorted[count($sorted) - 1]];
+      }
+    }
+
     $names = array_map(
       static fn(int $d) => self::WEEKDAY_NAMES[$d],
       $weekdays,

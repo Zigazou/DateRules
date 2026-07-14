@@ -51,6 +51,16 @@ final class Analyzer {
   private const MIN_DAILY_RUN_LENGTH = 7;
 
   /**
+   * Maximum gap in calendar days allowed between consecutive dates.
+   *
+   * Gaps larger than this indicate two distinct date clusters that should be
+   * analysed as separate rules. A value of 14 lets fortnightly (every-other-
+   * week) patterns pass through unaltered while still splitting the kind of
+   * multi-month seasonal breaks seen in practice.
+   */
+  private const MAX_WEEKDAY_GAP_DAYS = 14;
+
+  /**
    * Analyzes a list of date entries and returns a minimal RuleSet.
    *
    * @param \Zigazou\DateRules\DateEntry[] $entries
@@ -227,7 +237,18 @@ final class Analyzer {
     if (count($distinctWeekdays) === 7 && $density >= self::DAILY_DENSITY_THRESHOLD) {
       $exceptions = $this->findMissingDates($firstDate, $lastDate, $dates);
 
-      return [new DateRangeRule($firstDate, $lastDate, [$timeSlot], $exceptions)];
+      // If there is a long consecutive run of missing dates (e.g. a whole
+      // summer period where this time slot doesn't apply), treat the series
+      // as not a single continuous daily range and fall through to the
+      // consecutive-run extraction. This avoids collapsing distant blocks
+      // separated by a large gap into one DateRangeRule with many exceptions.
+      $longMissingRun = $this->findLongestConsecutiveRun($exceptions);
+      if ($longMissingRun !== NULL && count($longMissingRun) >= self::MIN_DAILY_RUN_LENGTH) {
+        // Do not treat as a direct daily range; continue to next steps.
+      }
+      else {
+        return [new DateRangeRule($firstDate, $lastDate, [$timeSlot], $exceptions)];
+      }
     }
 
     // Step 2 – Extract a long consecutive run as a daily sub-range and recurse.
@@ -243,6 +264,19 @@ final class Analyzer {
       return array_merge(
         [new DateRangeRule($runFirst, $runLast, [$timeSlot], $runExceptions)],
         $this->analyzeDates($remaining, $timeSlot),
+      );
+    }
+
+    // Step 2.5 – Split on a large temporal gap and recurse on each cluster.
+    $splitIdx = $this->findSplitIndexOnLargeGap($dates, self::MAX_WEEKDAY_GAP_DAYS);
+
+    if ($splitIdx !== NULL) {
+      $before = array_slice($dates, 0, $splitIdx);
+      $after  = array_slice($dates, $splitIdx);
+
+      return array_merge(
+        $this->analyzeDates($before, $timeSlot),
+        $this->analyzeDates($after, $timeSlot),
       );
     }
 
@@ -322,6 +356,36 @@ final class Analyzer {
     }
 
     return $missing;
+  }
+
+  /**
+   * Finds the index of the first date after the largest gap exceeding $minGap.
+   *
+   * Returns null when no gap exceeds the threshold.
+   *
+   * @param \DateTimeImmutable[] $dates
+   *   Sorted date array.
+   * @param int $minGap
+   *   Minimum gap size (in calendar days) to trigger a split.
+   *
+   * @return int|null
+   *   The index of $dates[$i] where the gap from $dates[$i-1] is largest and
+   *   exceeds $minGap, or null if no such gap exists.
+   */
+  private function findSplitIndexOnLargeGap(array $dates, int $minGap): ?int {
+    $maxGap = 0;
+    $maxIdx = NULL;
+
+    for ($i = 1, $n = count($dates); $i < $n; $i++) {
+      $gap = (int) $dates[$i - 1]->diff($dates[$i])->days;
+
+      if ($gap > $minGap && $gap > $maxGap) {
+        $maxGap = $gap;
+        $maxIdx = $i;
+      }
+    }
+
+    return $maxIdx;
   }
 
   /**
@@ -527,14 +591,18 @@ final class Analyzer {
   }
 
   /**
-   * Groups WeekdayRules whose weekdays form a subset/superset relationship.
+   * Groups WeekdayRules by two complementary strategies.
    *
-   * When rule B's weekdays are a proper subset of rule A's weekdays AND
-   * B's date range is contained within A's date range, the two rules are
-   * combined into a WeekdayGroupRule:
+   * Phase 1 – Subset relationship: when rule B's weekdays are a proper subset
+   * of rule A's weekdays AND B's date range is contained within A's date range,
+   * the two rules are combined into a WeekdayGroupRule:
    *  - An outer sub-rule covers A's weekdays minus B's weekdays with A's slots.
    *  - An inner sub-rule covers B's weekdays with combined slots from A and B.
    * Exceptions are distributed by weekday.
+   *
+   * Phase 2 – Disjoint weekday sets: when two rules have completely disjoint
+   * weekday sets AND their date ranges overlap, they are combined into a single
+   * WeekdayGroupRule spanning the union of both date ranges.
    *
    * @param \Zigazou\DateRules\Rule\RuleInterface[] $rules
    *   List of rules to process.
@@ -555,10 +623,13 @@ final class Analyzer {
       }
     }
 
-    $n      = count($weekdayRules);
-    $used   = array_fill(0, $n, FALSE);
-    $result = [];
+    $n    = count($weekdayRules);
+    $used = array_fill(0, $n, FALSE);
 
+    $phase1Result  = [];
+    $standaloneIdx = [];
+
+    // Phase 1: subset relationship.
     for ($i = 0; $i < $n; $i++) {
       if ($used[$i]) {
         continue;
@@ -612,7 +683,8 @@ final class Analyzer {
       }
 
       if (empty($subRuleBs)) {
-        $result[] = $ruleA;
+        // No subset found: defer to Phase 2.
+        $standaloneIdx[] = $i;
         continue;
       }
 
@@ -676,14 +748,99 @@ final class Analyzer {
         );
       }
 
-      $result[] = new WeekdayGroupRule(
+      $phase1Result[] = new WeekdayGroupRule(
         $groupSubRules,
         $ruleA->startDate,
         $ruleA->endDate,
       );
     }
 
-    return array_merge($result, $otherRules);
+    // Collect standalone rules that were not consumed in Phase 1.
+    $standaloneRules = [];
+    foreach ($standaloneIdx as $idx) {
+      $standaloneRules[] = $weekdayRules[$idx];
+    }
+
+    // Phase 2: combine rules with disjoint weekday sets and overlapping ranges.
+    $m     = count($standaloneRules);
+    $used2 = array_fill(0, $m, FALSE);
+    $phase2Result = [];
+
+    for ($i = 0; $i < $m; $i++) {
+      if ($used2[$i]) {
+        continue;
+      }
+
+      $ruleA    = $standaloneRules[$i];
+      $setA     = array_flip($ruleA->weekdays);
+      $partners = [];
+      $partnerIdxs = [];
+
+      for ($j = $i + 1; $j < $m; $j++) {
+        if ($used2[$j]) {
+          continue;
+        }
+
+        $ruleB = $standaloneRules[$j];
+
+        // Weekday sets must be completely disjoint.
+        $disjoint = TRUE;
+        foreach ($ruleB->weekdays as $day) {
+          if (isset($setA[$day])) {
+            $disjoint = FALSE;
+            break;
+          }
+        }
+        if (!$disjoint) {
+          continue;
+        }
+
+        // Date ranges must overlap.
+        if (
+          $ruleA->startDate->format('Y-m-d') > $ruleB->endDate->format('Y-m-d') ||
+          $ruleB->startDate->format('Y-m-d') > $ruleA->endDate->format('Y-m-d')
+        ) {
+          continue;
+        }
+
+        $partners[]    = $ruleB;
+        $partnerIdxs[] = $j;
+      }
+
+      $used2[$i] = TRUE;
+
+      if (empty($partners)) {
+        $phase2Result[] = $ruleA;
+        continue;
+      }
+
+      foreach ($partnerIdxs as $j) {
+        $used2[$j] = TRUE;
+      }
+
+      // Build the group: compute the union date range and sort by weekday.
+      $allSubRules = array_merge([$ruleA], $partners);
+
+      $startDate = $ruleA->startDate;
+      $endDate   = $ruleA->endDate;
+      foreach ($partners as $partner) {
+        if ($partner->startDate < $startDate) {
+          $startDate = $partner->startDate;
+        }
+        if ($partner->endDate > $endDate) {
+          $endDate = $partner->endDate;
+        }
+      }
+
+      usort(
+        $allSubRules,
+        static fn(WeekdayRule $a, WeekdayRule $b) => min($a->weekdays) <=> min($b->weekdays),
+      );
+
+      $phase2Result[] = new WeekdayGroupRule($allSubRules, $startDate, $endDate);
+    }
+
+    return array_merge($phase1Result, $phase2Result, $otherRules);
   }
 
 }

@@ -158,6 +158,41 @@ class DateRulesTest extends TestCase {
     $this->assertSame($expected, $this->parseAndFormat('liste-date-4.txt', TRUE));
   }
 
+  /**
+   * Tests formatting of 'liste-date-5.txt'.
+   *
+   * .
+   */
+  public function testListeDate5(): void {
+    $expected = implode("\n", [
+      'Du 11 avril au 30 juin 2026 : du mardi au dimanche de 10h à 18h.',
+      'Du 1er juillet au 30 août 2026 :',
+      '- mardi, mercredi, jeudi et vendredi : de 11h à 19h',
+      '- samedi et dimanche : de 11h à 12h30 et de 13h30 à 19h',
+      'Du 1er au 20 septembre 2026 :',
+      '- mardi, mercredi, jeudi et vendredi : de 10h à 18h',
+      '- samedi et dimanche : de 10h à 12h30 et de 13h30 à 18h',
+    ]);
+
+    $this->assertSame($expected, $this->parseAndFormat('liste-date-5.txt', FALSE));
+
+    $expected = implode("", [
+      '<p>Du 11 avril au 30 juin 2026 : du mardi au dimanche de 10h à 18h.</p>',
+      '<p>Du 1er juillet au 30 août 2026 :</p>',
+      '<ul>',
+      '<li>mardi, mercredi, jeudi et vendredi : de 11h à 19h</li>',
+      '<li>samedi et dimanche : de 11h à 12h30 et de 13h30 à 19h</li>',
+      '</ul>',
+      '<p>Du 1er au 20 septembre 2026 :</p>',
+      '<ul>',
+      '<li>mardi, mercredi, jeudi et vendredi : de 10h à 18h</li>',
+      '<li>samedi et dimanche : de 10h à 12h30 et de 13h30 à 18h</li>',
+      '</ul>',
+    ]);
+
+    $this->assertSame($expected, $this->parseAndFormat('liste-date-5.txt', TRUE));
+  }
+
   // ---------------------------------------------------------------------------
   // Helper
   // ---------------------------------------------------------------------------
@@ -446,7 +481,7 @@ class DateRulesTest extends TestCase {
    */
   public function testWeeklyPatternWithTwoExceptions(): void {
     $this->assertSame(
-      'Du 6 au 27 juillet 2026 : lundi de 9h à 10h (sauf le 13 juillet 2026 et le 20 juillet 2026).',
+      "Lundi 6 juillet 2026, de 9h à 10h.\nLundi 27 juillet 2026, de 9h à 10h.",
       $this->parseStringAndFormat(implode("\n", [
         '2026-07-06 09:00|2026-07-06 10:00',
         '2026-07-27 09:00|2026-07-27 10:00',
@@ -454,7 +489,7 @@ class DateRulesTest extends TestCase {
     );
 
     $this->assertSame(
-      '<p>Du 6 au 27 juillet 2026 : lundi de 9h à 10h (sauf le 13 juillet 2026 et le 20 juillet 2026).</p>',
+      '<p>Lundi 6 juillet 2026, de 9h à 10h.</p><p>Lundi 27 juillet 2026, de 9h à 10h.</p>',
       $this->parseStringAndFormat(implode("\n", [
         '2026-07-06 09:00|2026-07-06 10:00',
         '2026-07-27 09:00|2026-07-27 10:00',
@@ -564,12 +599,12 @@ class DateRulesTest extends TestCase {
     }
 
     $this->assertSame(
-      'Du 6 au 17 juillet 2026 : lundi, mardi, mercredi, jeudi et vendredi de 10h à 11h.',
+      'Du 6 au 17 juillet 2026 : du lundi au vendredi de 10h à 11h.',
       $this->parseStringAndFormat(implode("\n", $lines), FALSE)
     );
 
     $this->assertSame(
-      '<p>Du 6 au 17 juillet 2026 : lundi, mardi, mercredi, jeudi et vendredi de 10h à 11h.</p>',
+      '<p>Du 6 au 17 juillet 2026 : du lundi au vendredi de 10h à 11h.</p>',
       $this->parseStringAndFormat(implode("\n", $lines), TRUE)
     );
   }
@@ -640,8 +675,8 @@ class DateRulesTest extends TestCase {
     $this->assertSame(
       implode("\n", [
         'Du 6 au 25 juillet 2026 :',
-        '- lundi, mardi, mercredi, jeudi et vendredi de 14h à 17h',
-        '- samedi de 10h à 12h et de 14h à 17h',
+        '- du lundi au vendredi : de 14h à 17h',
+        '- samedi : de 10h à 12h et de 14h à 17h',
       ]),
       $this->parseStringAndFormat(implode("\n", $lines), FALSE)
     );
@@ -650,8 +685,8 @@ class DateRulesTest extends TestCase {
       implode("", [
         '<p>Du 6 au 25 juillet 2026 :</p>',
         '<ul>',
-        '<li>lundi, mardi, mercredi, jeudi et vendredi de 14h à 17h</li>',
-        '<li>samedi de 10h à 12h et de 14h à 17h</li>',
+        '<li>du lundi au vendredi : de 14h à 17h</li>',
+        '<li>samedi : de 10h à 12h et de 14h à 17h</li>',
         '</ul>',
       ]),
       $this->parseStringAndFormat(implode("\n", $lines), TRUE)
