@@ -38,6 +38,42 @@ final class Analyzer {
   private const ISO8601_WEEKDAY = 'N';
 
   /**
+   * Format string for 24-hour time with minutes (e.g. 23:59).
+   */
+  private const HOUR24_MINUTE = 'H:i';
+
+  /**
+   * Format string for minutes (e.g. 59).
+   */
+  private const MINUTE = 'i';
+
+  /**
+   * Format string for 24-hour time (e.g. 23).
+   */
+  private const HOUR24 = 'H';
+
+  /**
+   * Format string for year-month-day (e.g. 2024-06-01).
+   */
+  private const YEAR_MONTH_DAY = 'Y-m-d';
+
+  /**
+   * Last minute of the day (23:59).
+   *
+   * This is used to detect "stitched" entries that chain across midnight
+   * boundaries.
+   */
+  private const LAST_MINUTE_OF_DAY = '23:59';
+
+  /**
+   * First minute of the day (00:00).
+   *
+   * This is used to detect "stitched" entries that chain across midnight
+   * boundaries.
+   */
+  private const FIRST_MINUTE_OF_DAY = '00:00';
+
+  /**
    * Minimum fraction of days in [first, last] that must be covered.
    *
    * It must be covered before a group is treated as a continuous "every day"
@@ -148,9 +184,12 @@ final class Analyzer {
         $next = $entries[$j];
 
         if (
-          $prev->end->format('H:i') === '23:59' &&
-          $next->start->format('H:i') === '00:00' &&
-          $next->start->format('Y-m-d') === $prev->end->modify('+1 day')->format('Y-m-d')
+          $prev->end->format(self::HOUR24_MINUTE)
+            === self::LAST_MINUTE_OF_DAY &&
+          $next->start->format(self::HOUR24_MINUTE)
+            === self::FIRST_MINUTE_OF_DAY &&
+          $next->start->format(self::YEAR_MONTH_DAY)
+            === $prev->end->modify('+1 day')->format(self::YEAR_MONTH_DAY)
         ) {
           $chain[] = $next;
           $j++;
@@ -164,18 +203,21 @@ final class Analyzer {
 
       if (
         count($chain) >= 2 &&
-        $lastInChain->end->format('H:i') !== '23:59'
+        $lastInChain->end->format(self::HOUR24_MINUTE) !== self::LAST_MINUTE_OF_DAY
       ) {
-        $startH = (int) $chain[0]->start->format('H');
-        $startM = (int) $chain[0]->start->format('i');
-        $endH   = (int) $lastInChain->end->format('H');
-        $endM   = (int) $lastInChain->end->format('i');
+        $startH = (int) $chain[0]->start->format(self::HOUR24);
+        $startM = (int) $chain[0]->start->format(self::MINUTE);
+        $endH   = (int) $lastInChain->end->format(self::HOUR24);
+        $endM   = (int) $lastInChain->end->format(self::MINUTE);
 
         if ($startH * 60 + $startM < $endH * 60 + $endM) {
           $current  = $chain[0]->getDate();
           $lastDate = $lastInChain->getDate();
 
-          while ($current->format('Y-m-d') <= $lastDate->format('Y-m-d')) {
+          while (
+            $current->format(self::YEAR_MONTH_DAY)
+              <= $lastDate->format(self::YEAR_MONTH_DAY)
+          ) {
             $result[] = new DateEntry(
               $current->setTime($startH, $startM),
               $current->setTime($endH, $endM),
@@ -248,7 +290,10 @@ final class Analyzer {
     // enough. Requiring exactly 7 distinct weekdays ensures that a
     // 6-day-per-week pattern (max density ≈ 85.7 %) never accidentally triggers
     // this branch.
-    if (count($distinctWeekdays) === 7 && $density >= self::DAILY_DENSITY_THRESHOLD) {
+    if (
+      count($distinctWeekdays) === 7 &&
+      $density >= self::DAILY_DENSITY_THRESHOLD
+    ) {
       $exceptions = $this->findMissingDates($firstDate, $lastDate, $dates);
 
       // If there is a long consecutive run of missing dates (e.g. a whole
@@ -257,18 +302,26 @@ final class Analyzer {
       // consecutive-run extraction. This avoids collapsing distant blocks
       // separated by a large gap into one DateRangeRule with many exceptions.
       $longMissingRun = $this->findLongestConsecutiveRun($exceptions);
-      if ($longMissingRun !== NULL && count($longMissingRun) >= self::MIN_DAILY_RUN_LENGTH) {
+      if (
+        $longMissingRun !== NULL &&
+        count($longMissingRun) >= self::MIN_DAILY_RUN_LENGTH
+      ) {
         // Do not treat as a direct daily range; continue to next steps.
       }
       else {
-        return [new DateRangeRule($firstDate, $lastDate, [$timeSlot], $exceptions)];
+        return [
+          new DateRangeRule($firstDate, $lastDate, [$timeSlot], $exceptions),
+        ];
       }
     }
 
     // Step 2 – Extract a long consecutive run as a daily sub-range and recurse.
     $longestRun = $this->findLongestConsecutiveRun($dates);
 
-    if ($longestRun !== NULL && count($longestRun) >= self::MIN_DAILY_RUN_LENGTH) {
+    if (
+      $longestRun !== NULL &&
+      count($longestRun) >= self::MIN_DAILY_RUN_LENGTH
+    ) {
       $runFirst      = $longestRun[0];
       $runLast       = $longestRun[array_key_last($longestRun)];
       $runExceptions = $this->findMissingDates($runFirst, $runLast, $longestRun);
@@ -282,7 +335,10 @@ final class Analyzer {
     }
 
     // Step 2.5 – Split on a large temporal gap and recurse on each cluster.
-    $splitIdx = $this->findSplitIndexOnLargeGap($dates, self::MAX_WEEKDAY_GAP_DAYS);
+    $splitIdx = $this->findSplitIndexOnLargeGap(
+      $dates,
+      self::MAX_WEEKDAY_GAP_DAYS
+    );
 
     if ($splitIdx !== NULL) {
       $before = array_slice($dates, 0, $splitIdx);
@@ -310,7 +366,7 @@ final class Analyzer {
   private function extractSortedDates(array $entries): array {
     $dateMap = [];
     foreach ($entries as $entry) {
-      $key           = $entry->getDate()->format('Y-m-d');
+      $key           = $entry->getDate()->format(self::YEAR_MONTH_DAY);
       $dateMap[$key] = $entry->getDate();
     }
     ksort($dateMap);
@@ -359,15 +415,18 @@ final class Analyzer {
     array $actual,
   ): array {
     $actualSet = array_flip(array_map(
-      static fn(\DateTimeImmutable $d) => $d->format('Y-m-d'),
+      static fn(\DateTimeImmutable $d) => $d->format(self::YEAR_MONTH_DAY),
       $actual,
     ));
 
     $missing = [];
     $current = $start;
 
-    while ($current->format('Y-m-d') <= $end->format('Y-m-d')) {
-      if (!isset($actualSet[$current->format('Y-m-d')])) {
+    while (
+      $current->format(self::YEAR_MONTH_DAY)
+        <= $end->format(self::YEAR_MONTH_DAY)
+    ) {
+      if (!isset($actualSet[$current->format(self::YEAR_MONTH_DAY)])) {
         $missing[] = $current;
       }
       $current = $current->modify('+1 day');
@@ -464,14 +523,15 @@ final class Analyzer {
     \DateTimeImmutable $rangeStart,
     \DateTimeImmutable $rangeEnd,
   ): array {
-    $start = $rangeStart->format('Y-m-d');
-    $end   = $rangeEnd->format('Y-m-d');
+    $start = $rangeStart->format(self::YEAR_MONTH_DAY);
+    $end   = $rangeEnd->format(self::YEAR_MONTH_DAY);
 
     return array_values(
       array_filter(
         $dates,
         static fn(\DateTimeImmutable $d) =>
-          $d->format('Y-m-d') < $start || $d->format('Y-m-d') > $end,
+          $d->format(self::YEAR_MONTH_DAY) < $start ||
+          $d->format(self::YEAR_MONTH_DAY) > $end,
       )
     );
   }
@@ -522,8 +582,10 @@ final class Analyzer {
         $groupEnd   = $group['end'];
 
         if (
-          abs((int) $groupStart->diff($range['start'])->days) <= self::MAX_WEEKDAY_GROUPING_DAYS &&
-          abs((int) $groupEnd->diff($range['end'])->days) <= self::MAX_WEEKDAY_GROUPING_DAYS
+          abs((int) $groupStart->diff($range['start'])->days)
+            <= self::MAX_WEEKDAY_GROUPING_DAYS &&
+          abs((int) $groupEnd->diff($range['end'])->days)
+            <= self::MAX_WEEKDAY_GROUPING_DAYS
         ) {
           $group['weekdays'][] = $weekday;
           $group['start']      = min($groupStart, $range['start']);
@@ -552,12 +614,13 @@ final class Analyzer {
       );
 
       $actualSet = array_flip(array_map(
-        static fn(\DateTimeImmutable $d) => $d->format('Y-m-d'), $dates)
-      );
+        static fn(\DateTimeImmutable $d) => $d->format(self::YEAR_MONTH_DAY),
+        $dates
+      ));
 
       $exceptions = [];
       foreach ($expectedDates as $expected) {
-        if (!isset($actualSet[$expected->format('Y-m-d')])) {
+        if (!isset($actualSet[$expected->format(self::YEAR_MONTH_DAY)])) {
           $exceptions[] = $expected;
         }
       }
@@ -596,7 +659,10 @@ final class Analyzer {
     $dates      = [];
     $current    = $start;
 
-    while ($current->format('Y-m-d') <= $end->format('Y-m-d')) {
+    while (
+      $current->format(self::YEAR_MONTH_DAY)
+        <= $end->format(self::YEAR_MONTH_DAY)
+    ) {
       if (isset($weekdaySet[(int) $current->format(self::ISO8601_WEEKDAY)])) {
         $dates[] = $current;
       }
@@ -742,8 +808,10 @@ final class Analyzer {
 
         // B's date range must be contained within A's date range.
         if (
-          $ruleB->startDate->format('Y-m-d') < $ruleA->startDate->format('Y-m-d') ||
-          $ruleB->endDate->format('Y-m-d') > $ruleA->endDate->format('Y-m-d')
+          $ruleB->startDate->format(self::YEAR_MONTH_DAY)
+            < $ruleA->startDate->format(self::YEAR_MONTH_DAY) ||
+          $ruleB->endDate->format(self::YEAR_MONTH_DAY)
+            > $ruleA->endDate->format(self::YEAR_MONTH_DAY)
         ) {
           continue;
         }
@@ -784,8 +852,11 @@ final class Analyzer {
       if (!empty($outerWeekdays)) {
         $outerExceptions = array_values(array_filter(
           $ruleA->exceptions,
-          static fn(\DateTimeImmutable $d) =>
-            in_array((int) $d->format(self::ISO8601_WEEKDAY), $outerWeekdays, TRUE),
+          static fn(\DateTimeImmutable $d) => in_array(
+            (int) $d->format(self::ISO8601_WEEKDAY),
+            $outerWeekdays,
+            TRUE
+          ),
         ));
 
         $groupSubRules[] = new WeekdayRule(
@@ -801,8 +872,11 @@ final class Analyzer {
       foreach ($subRuleBs as $ruleB) {
         $innerExceptions = array_values(array_filter(
           $ruleA->exceptions,
-          static fn(\DateTimeImmutable $d) =>
-            in_array((int) $d->format(self::ISO8601_WEEKDAY), $ruleB->weekdays, TRUE),
+          static fn(\DateTimeImmutable $d) => in_array(
+            (int) $d->format(self::ISO8601_WEEKDAY),
+            $ruleB->weekdays,
+            TRUE
+          ),
         ));
 
         $allSlots = [];
@@ -821,7 +895,8 @@ final class Analyzer {
           foreach ($ruleB->weekdays as $day) {
             $dayExceptions = array_values(array_filter(
               $innerExceptions,
-              static fn(\DateTimeImmutable $d) => (int) $d->format(self::ISO8601_WEEKDAY) === $day,
+              static fn(\DateTimeImmutable $d) =>
+                (int) $d->format(self::ISO8601_WEEKDAY) === $day,
             ));
 
             $groupSubRules[] = new WeekdayRule(
@@ -893,8 +968,10 @@ final class Analyzer {
 
         // Date ranges must overlap.
         if (
-          $ruleA->startDate->format('Y-m-d') > $ruleB->endDate->format('Y-m-d') ||
-          $ruleB->startDate->format('Y-m-d') > $ruleA->endDate->format('Y-m-d')
+          $ruleA->startDate->format(self::YEAR_MONTH_DAY)
+            > $ruleB->endDate->format(self::YEAR_MONTH_DAY) ||
+          $ruleB->startDate->format(self::YEAR_MONTH_DAY)
+            > $ruleA->endDate->format(self::YEAR_MONTH_DAY)
         ) {
           continue;
         }
@@ -930,10 +1007,15 @@ final class Analyzer {
 
       usort(
         $allSubRules,
-        static fn(WeekdayRule $a, WeekdayRule $b) => min($a->weekdays) <=> min($b->weekdays),
+        static fn(WeekdayRule $a, WeekdayRule $b) =>
+          min($a->weekdays) <=> min($b->weekdays),
       );
 
-      $phase2Result[] = new WeekdayGroupRule($allSubRules, $startDate, $endDate);
+      $phase2Result[] = new WeekdayGroupRule(
+        $allSubRules,
+        $startDate,
+        $endDate
+      );
     }
 
     return array_merge($phase1Result, $phase2Result, $otherRules);
