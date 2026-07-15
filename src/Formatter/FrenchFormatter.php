@@ -52,6 +52,21 @@ final class FrenchFormatter implements FormatterInterface {
     12 => 'décembre',
   ];
 
+  private const SHORT_MONTH_NAMES = [
+    1  => 'jan.',
+    2  => 'fév.',
+    3  => 'mars',
+    4  => 'avr.',
+    5  => 'mai',
+    6  => 'juin',
+    7  => 'jul.',
+    8  => 'aoû.',
+    9  => 'sep.',
+    10 => 'oct.',
+    11 => 'nov.',
+    12 => 'déc.',
+  ];
+
   /**
    * {@inheritdoc}
    */
@@ -135,7 +150,11 @@ final class FrenchFormatter implements FormatterInterface {
    */
   private function formatWeekdayRule(WeekdayRule $rule): string {
     $slots  = $this->formatTimeSlots($rule->timeSlots);
-    $except = $this->formatExceptions($rule->exceptions);
+    $except = $this->formatExceptions(
+      $rule->exceptions,
+      $rule->startDate,
+      $rule->endDate
+    );
 
     // Single day: "Vendredi 10 juillet 2026, de 10h à 11h.".
     if ($rule->startDate->format('Y-m-d') === $rule->endDate->format('Y-m-d')) {
@@ -194,7 +213,11 @@ final class FrenchFormatter implements FormatterInterface {
     foreach ($rule->subRules as $idx => $subRule) {
       $days   = $this->formatWeekdays($subRule->weekdays);
       $slots  = $this->formatTimeSlots($subRule->timeSlots);
-      $except = $this->formatExceptions($subRule->exceptions);
+      $except = $this->formatExceptions(
+        $subRule->exceptions,
+        $subRule->startDate,
+        $subRule->endDate
+      );
 
       if ($except !== '') {
         $line = '- ' . $days . ' de ' . $slots . ' (' . $except . ')';
@@ -202,6 +225,7 @@ final class FrenchFormatter implements FormatterInterface {
       else {
         $line = '- ' . $days . ' : de ' . $slots;
       }
+
       $lines[] = $line;
     }
 
@@ -220,7 +244,11 @@ final class FrenchFormatter implements FormatterInterface {
   private function formatDateRangeRule(DateRangeRule $rule): string {
     $range  = $this->formatDateRangeLabel($rule->startDate, $rule->endDate);
     $slots  = $this->formatTimeSlots($rule->timeSlots);
-    $except = $this->formatExceptions($rule->exceptions);
+    $except = $this->formatExceptions(
+      $rule->exceptions,
+      $rule->startDate,
+      $rule->endDate
+    );
 
     // "Du 1er au 30 juillet 2026 : tous les jours de 23h à 23h59."
     $result = ucfirst($range) . ' : tous les jours de ' . $slots;
@@ -391,21 +419,47 @@ final class FrenchFormatter implements FormatterInterface {
    *
    * @param \DateTimeImmutable[] $exceptions
    *   The exception dates to format.
+   * @param \DateTimeImmutable $startDate
+   *   The start date of the associated events.
+   * @param \DateTimeImmutable $endDate
+   *   The end date of the associated events.
    *
    * @return string
    *   The formatted exceptions string, or an empty string if none.
    */
-  private function formatExceptions(array $exceptions): string {
+  private function formatExceptions(array $exceptions, \DateTimeImmutable $startDate, \DateTimeImmutable $endDate): string {
     if (empty($exceptions)) {
       return '';
     }
 
-    $labels = array_map(
-      fn(\DateTimeImmutable $d) => 'le ' . $this->formatFullDate($d),
-      $exceptions,
-    );
+    if (count($exceptions) > 5) {
+      $exceptionsInInterval = array_filter(
+        $exceptions,
+        fn(\DateTimeImmutable $d) => $d >= $startDate && $d <= $endDate
+      );
 
-    return 'sauf ' . $this->joinFrench($labels);
+      $frenchRange = 'du ' . $this->formatFullDate($startDate)
+          . ' au ' . $this->formatFullDate($endDate);
+
+      if (!empty($exceptionsInInterval)) {
+        $labels = array_map(
+          fn(\DateTimeImmutable $d) => 'le ' . $this->formatFullDate($d),
+          $exceptionsInInterval,
+        );
+
+        $frenchRange .= ' sauf ' . $this->joinFrench($labels);
+      }
+
+      return $frenchRange;
+    }
+    else {
+      $labels = array_map(
+        fn(\DateTimeImmutable $d) => 'le ' . $this->formatFullDate($d),
+        $exceptions,
+      );
+
+      return 'sauf ' . $this->joinFrench($labels);
+    }
   }
 
   /**
@@ -435,6 +489,23 @@ final class FrenchFormatter implements FormatterInterface {
   private function formatShortDate(\DateTimeImmutable $date): string {
     return $this->dayOrdinal($date)
       . ' ' . self::MONTH_NAMES[(int) $date->format('n')];
+  }
+
+  /**
+   * Formats a short exception date as a French-language string.
+   *
+   * E.g. "31 juil. 2027".
+   *
+   * @param \DateTimeImmutable $date
+   *   The date to format.
+   *
+   * @return string
+   *   The formatted short exception date string (with year).
+   */
+  private function formatShortExceptionDate(\DateTimeImmutable $date): string {
+    return $this->dayOrdinal($date)
+      . ' ' . self::SHORT_MONTH_NAMES[(int) $date->format('n')]
+      . ' ' . $date->format('Y');
   }
 
   /**

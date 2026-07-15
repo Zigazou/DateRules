@@ -33,6 +33,11 @@ use Zigazou\DateRules\TimeSlot;
  */
 final class Analyzer {
   /**
+   * ISO 8601 weekday format character for DateTime::format().
+   */
+  private const ISO8601_WEEKDAY = 'N';
+
+  /**
    * Minimum fraction of days in [first, last] that must be covered.
    *
    * It must be covered before a group is treated as a continuous "every day"
@@ -61,6 +66,14 @@ final class Analyzer {
   private const MAX_WEEKDAY_GAP_DAYS = 14;
 
   /**
+   * Maximum difference in days when grouping weekday rules.
+   *
+   * If the difference in start dates of two weekday rules is larger than this
+   * value, they will not be grouped together.
+   */
+  private const MAX_WEEKDAY_GROUPING_DAYS = 21;
+
+  /**
    * Analyzes a list of date entries and returns a minimal RuleSet.
    *
    * @param \Zigazou\DateRules\DateEntry[] $entries
@@ -83,6 +96,7 @@ final class Analyzer {
       $groups[$entry->getTimeSlot()->key()][] = $entry;
     }
 
+    // Analyze each group and merge the resulting rules.
     $rules = [];
     foreach ($groups as $groupEntries) {
       array_push($rules, ...$this->analyzeGroup($groupEntries));
@@ -281,7 +295,7 @@ final class Analyzer {
     }
 
     // Step 3 – Fall back to a weekly pattern.
-    return [$this->buildWeekdayRule($dates, $timeSlot)];
+    return $this->buildWeekdayRules($dates, $timeSlot);
   }
 
   /**
@@ -316,7 +330,11 @@ final class Analyzer {
   private function distinctWeekdays(array $dates): array {
     $weekdays = [];
     foreach ($dates as $date) {
-      $weekdays[(int) $date->format('N')] = TRUE;
+      $weekdays[(int) $date->format(self::ISO8601_WEEKDAY)] = TRUE;
+
+      if (count($weekdays) === 7) {
+        break;
+      }
     }
 
     return array_keys($weekdays);
@@ -459,7 +477,7 @@ final class Analyzer {
   }
 
   /**
-   * Builds a WeekdayRule from a set of dates.
+   * Builds an array of WeekdayRule from a set of dates.
    *
    * It does so by detecting which weekdays are consistently present and
    * computing the set of exceptional missing dates.
@@ -469,36 +487,91 @@ final class Analyzer {
    * @param \Zigazou\DateRules\TimeSlot $timeSlot
    *   Time slot shared by all dates.
    *
-   * @return \Zigazou\DateRules\Rule\WeekdayRule
+   * @return \Zigazou\DateRules\Rule\WeekdayRule[]
    *   The constructed WeekdayRule.
    */
-  private function buildWeekdayRule(array $dates, TimeSlot $timeSlot): WeekdayRule {
+  private function buildWeekdayRules(array $dates, TimeSlot $timeSlot): array {
     $weekdays = $this->distinctWeekdays($dates);
     sort($weekdays);
 
-    $firstDate = $dates[0];
-    $lastDate  = $dates[array_key_last($dates)];
+    // Group entries by their weekday.
+    $weekdayGroups = [];
+    foreach ($dates as $date) {
+      $weekdayGroups[(int) $date->format(self::ISO8601_WEEKDAY)][] = $date;
+    }
 
-    $expectedDates = $this->generateDatesForWeekdays($weekdays, $firstDate, $lastDate);
-    $actualSet     = array_flip(array_map(
-      static fn(\DateTimeImmutable $d) => $d->format('Y-m-d'),
-      $dates,
-    ));
+    ksort($weekdayGroups);
 
-    $exceptions = [];
-    foreach ($expectedDates as $expected) {
-      if (!isset($actualSet[$expected->format('Y-m-d')])) {
-        $exceptions[] = $expected;
+    // Determine start date and end date for each weekday group.
+    $weekdayRanges = [];
+    foreach ($weekdayGroups as $weekday => $groupEntries) {
+      $startDay = reset($groupEntries);
+      $endDay   = end($groupEntries);
+
+      $weekdayRanges[$weekday] = ['start' => $startDay, 'end' => $endDay];
+    }
+
+    // According to the weekday ranges, group the weekdays so that each group
+    // has the same start and end date with a maximum gap of
+    // MAX_WEEKDAY_GAP_DAYS between them. Each group will become a WeekdayRule.
+    $weekdayGroups = [];
+    foreach ($weekdayRanges as $weekday => $range) {
+      $added = FALSE;
+      foreach ($weekdayGroups as &$group) {
+        $groupStart = $group['start'];
+        $groupEnd   = $group['end'];
+
+        if (
+          abs((int) $groupStart->diff($range['start'])->days) <= self::MAX_WEEKDAY_GROUPING_DAYS &&
+          abs((int) $groupEnd->diff($range['end'])->days) <= self::MAX_WEEKDAY_GROUPING_DAYS
+        ) {
+          $group['weekdays'][] = $weekday;
+          $group['start']      = min($groupStart, $range['start']);
+          $group['end']        = max($groupEnd, $range['end']);
+          $added               = TRUE;
+          break;
+        }
+      }
+
+      if (!$added) {
+        $weekdayGroups[] = [
+          'weekdays' => [$weekday],
+          'start'    => $range['start'],
+          'end'      => $range['end'],
+        ];
       }
     }
 
-    return new WeekdayRule(
-      $weekdays,
-      [$timeSlot],
-      $firstDate,
-      $lastDate,
-      $exceptions
-    );
+    $rules = [];
+
+    foreach ($weekdayGroups as $group) {
+      $expectedDates = $this->generateDatesForWeekdays(
+        $group['weekdays'],
+        $group['start'],
+        $group['end']
+      );
+
+      $actualSet = array_flip(array_map(
+        static fn(\DateTimeImmutable $d) => $d->format('Y-m-d'), $dates)
+      );
+
+      $exceptions = [];
+      foreach ($expectedDates as $expected) {
+        if (!isset($actualSet[$expected->format('Y-m-d')])) {
+          $exceptions[] = $expected;
+        }
+      }
+
+      $rules[] = new WeekdayRule(
+        $group['weekdays'],
+        [$timeSlot],
+        $group['start'],
+        $group['end'],
+        $exceptions
+       );
+    }
+
+    return $rules;
   }
 
   /**
@@ -524,7 +597,7 @@ final class Analyzer {
     $current    = $start;
 
     while ($current->format('Y-m-d') <= $end->format('Y-m-d')) {
-      if (isset($weekdaySet[(int) $current->format('N')])) {
+      if (isset($weekdaySet[(int) $current->format(self::ISO8601_WEEKDAY)])) {
         $dates[] = $current;
       }
       $current = $current->modify('+1 day');
@@ -549,6 +622,7 @@ final class Analyzer {
     $weekdayGroups = [];
     $otherRules    = [];
 
+    // Group WeekdayRules by their structure key (weekdays + date range).
     foreach ($rules as $rule) {
       if ($rule instanceof WeekdayRule) {
         $weekdayGroups[$rule->structureKey()][] = $rule;
@@ -560,6 +634,8 @@ final class Analyzer {
 
     $merged = $otherRules;
 
+    // Merge each group of WeekdayRules into a single rule with combined time
+    // slots.
     foreach ($weekdayGroups as $group) {
       /** @var \Zigazou\DateRules\Rule\WeekdayRule $base */
       $base     = $group[0];
@@ -709,7 +785,7 @@ final class Analyzer {
         $outerExceptions = array_values(array_filter(
           $ruleA->exceptions,
           static fn(\DateTimeImmutable $d) =>
-            in_array((int) $d->format('N'), $outerWeekdays, TRUE),
+            in_array((int) $d->format(self::ISO8601_WEEKDAY), $outerWeekdays, TRUE),
         ));
 
         $groupSubRules[] = new WeekdayRule(
@@ -726,7 +802,7 @@ final class Analyzer {
         $innerExceptions = array_values(array_filter(
           $ruleA->exceptions,
           static fn(\DateTimeImmutable $d) =>
-            in_array((int) $d->format('N'), $ruleB->weekdays, TRUE),
+            in_array((int) $d->format(self::ISO8601_WEEKDAY), $ruleB->weekdays, TRUE),
         ));
 
         $allSlots = [];
@@ -739,13 +815,33 @@ final class Analyzer {
             $a->startInMinutes() <=> $b->startInMinutes(),
         );
 
-        $groupSubRules[] = new WeekdayRule(
-          $ruleB->weekdays,
-          array_values($allSlots),
-          $ruleA->startDate,
-          $ruleA->endDate,
-          $innerExceptions,
-        );
+        if (count($innerExceptions) > 5) {
+          // Separate each inner weekday into its own sub-rule to avoid a long
+          // list of exceptions.
+          foreach ($ruleB->weekdays as $day) {
+            $dayExceptions = array_values(array_filter(
+              $innerExceptions,
+              static fn(\DateTimeImmutable $d) => (int) $d->format(self::ISO8601_WEEKDAY) === $day,
+            ));
+
+            $groupSubRules[] = new WeekdayRule(
+              [$day],
+              array_values($allSlots),
+              $ruleA->startDate,
+              $ruleA->endDate,
+              $dayExceptions,
+            );
+          }
+        }
+        else {
+          $groupSubRules[] = new WeekdayRule(
+            $ruleB->weekdays,
+            array_values($allSlots),
+            $ruleA->startDate,
+            $ruleA->endDate,
+            $innerExceptions,
+          );
+        }
       }
 
       $phase1Result[] = new WeekdayGroupRule(
@@ -762,8 +858,8 @@ final class Analyzer {
     }
 
     // Phase 2: combine rules with disjoint weekday sets and overlapping ranges.
-    $m     = count($standaloneRules);
-    $used2 = array_fill(0, $m, FALSE);
+    $m            = count($standaloneRules);
+    $used2        = array_fill(0, $m, FALSE);
     $phase2Result = [];
 
     for ($i = 0; $i < $m; $i++) {
@@ -771,9 +867,9 @@ final class Analyzer {
         continue;
       }
 
-      $ruleA    = $standaloneRules[$i];
-      $setA     = array_flip($ruleA->weekdays);
-      $partners = [];
+      $ruleA       = $standaloneRules[$i];
+      $setA        = array_flip($ruleA->weekdays);
+      $partners    = [];
       $partnerIdxs = [];
 
       for ($j = $i + 1; $j < $m; $j++) {

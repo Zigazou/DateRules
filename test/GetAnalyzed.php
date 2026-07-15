@@ -55,4 +55,4 @@ class GetAnalyzed {
 require 'vendor/autoload.php';
 
 $getAnalyzed = new GetAnalyzed();
-print_r($getAnalyzed->parseAndFormat('liste-date-5.txt'));
+print_r($getAnalyzed->parseAndFormat('liste-date-6.txt'));

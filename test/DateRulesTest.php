@@ -160,8 +160,6 @@ class DateRulesTest extends TestCase {
 
   /**
    * Tests formatting of 'liste-date-5.txt'.
-   *
-   * .
    */
   public function testListeDate5(): void {
     $expected = implode("\n", [
@@ -191,6 +189,31 @@ class DateRulesTest extends TestCase {
     ]);
 
     $this->assertSame($expected, $this->parseAndFormat('liste-date-5.txt', TRUE));
+  }
+
+  /**
+   * Tests formatting of 'liste-date-6.txt'.
+   */
+  public function testListeDate6(): void {
+    $expected = implode("\n", [
+      'Du 24 juin 2024 au 30 décembre 2026 :',
+      '- lundi, mercredi, jeudi et vendredi de 13h30 à 18h15 (sauf le 24 décembre 2026 et le 25 décembre 2026)',
+      '- samedi de 10h à 12h30 et de 13h30 à 18h15 (sauf le 15 août 2026)',
+      'Du 17 mai au 27 décembre 2026 : dimanche de 10h à 12h30 et de 13h30 à 18h15.',
+    ]);
+
+    $this->assertSame($expected, $this->parseAndFormat('liste-date-6.txt', FALSE));
+
+    $expected = implode("", [
+      '<p>Du 24 juin 2024 au 30 décembre 2026 :</p>',
+      '<ul>',
+      '<li>lundi, mercredi, jeudi et vendredi de 13h30 à 18h15 (sauf le 24 décembre 2026 et le 25 décembre 2026)</li>',
+      '<li>samedi de 10h à 12h30 et de 13h30 à 18h15 (sauf le 15 août 2026)</li>',
+      '</ul>',
+      '<p>Du 17 mai au 27 décembre 2026 : dimanche de 10h à 12h30 et de 13h30 à 18h15.</p>',
+    ]);
+
+    $this->assertSame($expected, $this->parseAndFormat('liste-date-6.txt', TRUE));
   }
 
   // ---------------------------------------------------------------------------
