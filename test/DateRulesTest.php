@@ -216,6 +216,45 @@ class DateRulesTest extends TestCase {
     $this->assertSame($expected, $this->parseAndFormat('liste-date-6.txt', TRUE));
   }
 
+  /**
+   * Tests formatting of 'liste-date-7.txt'.
+   */
+  public function testListeDate7(): void {
+    $expected = implode("\n", [
+      'Dimanche 19 juillet 2026, de 10h à 18h.',
+      'Dimanche 2 août 2026, de 10h à 18h.',
+      'Dimanche 16 août 2026, de 10h à 18h.',
+      'Dimanche 30 août 2026, de 10h à 18h.',
+      'Dimanche 13 septembre 2026, de 10h à 18h.',
+      'Dimanche 27 septembre 2026, de 10h à 18h.',
+      'Dimanche 11 octobre 2026, de 10h à 18h.',
+      'Dimanche 25 octobre 2026, de 10h à 18h.',
+      'Dimanche 8 novembre 2026, de 10h à 18h.',
+      'Dimanche 22 novembre 2026, de 10h à 18h.',
+      'Dimanche 6 décembre 2026, de 10h à 18h.',
+      'Dimanche 20 décembre 2026, de 10h à 18h.',
+    ]);
+
+    $this->assertSame($expected, $this->parseAndFormat('liste-date-7.txt', FALSE));
+
+    $expected = implode("", [
+      '<p>Dimanche 19 juillet 2026, de 10h à 18h.</p>',
+      '<p>Dimanche 2 août 2026, de 10h à 18h.</p>',
+      '<p>Dimanche 16 août 2026, de 10h à 18h.</p>',
+      '<p>Dimanche 30 août 2026, de 10h à 18h.</p>',
+      '<p>Dimanche 13 septembre 2026, de 10h à 18h.</p>',
+      '<p>Dimanche 27 septembre 2026, de 10h à 18h.</p>',
+      '<p>Dimanche 11 octobre 2026, de 10h à 18h.</p>',
+      '<p>Dimanche 25 octobre 2026, de 10h à 18h.</p>',
+      '<p>Dimanche 8 novembre 2026, de 10h à 18h.</p>',
+      '<p>Dimanche 22 novembre 2026, de 10h à 18h.</p>',
+      '<p>Dimanche 6 décembre 2026, de 10h à 18h.</p>',
+      '<p>Dimanche 20 décembre 2026, de 10h à 18h.</p>',
+    ]);
+
+    $this->assertSame($expected, $this->parseAndFormat('liste-date-7.txt', TRUE));
+  }
+
   // ---------------------------------------------------------------------------
   // Helper
   // ---------------------------------------------------------------------------

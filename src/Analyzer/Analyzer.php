@@ -356,19 +356,18 @@ final class Analyzer {
 
     // Test if there are exceptions in the weekday rules. If there are no
     // exceptions, we can return the weekday rules directly.
-    $hasExceptions = FALSE;
+    $exceptionsCount = 0;
     foreach ($weekdayRules as $rule) {
-      if (!empty($rule->getExceptions())) {
-        $hasExceptions = TRUE;
-        break;
-      }
+      $exceptions = $rule->getExceptions();
+      $exceptionsCount += count($rule->getExceptions());
     }
 
-    if (!$hasExceptions && count($dates) > 2) {
+    if ($exceptionsCount === 0 && count($dates) > 2) {
       return $weekdayRules;
     }
 
-    if (count($dates) <= 3) {
+    $exceptionsRatio = $exceptionsCount / count($dates);
+    if (count($dates) <= 3 || $exceptionsRatio > 0.5) {
       // Step 2.75 – Small clusters of dates (≤ 4) are treated as individual
       // DateRangeRules, even if they are not strictly consecutive. This avoids
       // generating a WeekdayRule with many exceptions for a small number of
