@@ -9,6 +9,7 @@ use Zigazou\DateRules\Rule\DateRangeRule;
 use Zigazou\DateRules\Rule\RuleInterface;
 use Zigazou\DateRules\Rule\WeekdayGroupRule;
 use Zigazou\DateRules\Rule\WeekdayRule;
+use Zigazou\DateRules\Rule\SingleDayRule;
 use Zigazou\DateRules\RuleSet;
 use Zigazou\DateRules\TimeSlot;
 
@@ -138,6 +139,7 @@ final class Analyzer {
       array_push($rules, ...$this->analyzeGroup($groupEntries));
     }
 
+    $rules = $this->groupSingleDayRules($rules);
     $rules = $this->mergeWeekdayRules($rules);
     $rules = $this->groupCompatibleWeekdayRules($rules);
 
@@ -350,8 +352,73 @@ final class Analyzer {
       );
     }
 
+    $weekdayRules = $this->buildWeekdayRules($dates, $timeSlot);
+
+    // Test if there are exceptions in the weekday rules. If there are no
+    // exceptions, we can return the weekday rules directly.
+    $hasExceptions = FALSE;
+    foreach ($weekdayRules as $rule) {
+      if (!empty($rule->getExceptions())) {
+        $hasExceptions = TRUE;
+        break;
+      }
+    }
+
+    if (!$hasExceptions && count($dates) > 2) {
+      return $weekdayRules;
+    }
+
+    if (count($dates) <= 3) {
+      // Step 2.75 – Small clusters of dates (≤ 4) are treated as individual
+      // DateRangeRules, even if they are not strictly consecutive. This avoids
+      // generating a WeekdayRule with many exceptions for a small number of
+      // dates.
+      $rules = [];
+      foreach ($dates as $date) {
+        $rules[] = new SingleDayRule($date, [$timeSlot]);
+      }
+
+      return $rules;
+    }
+
     // Step 3 – Fall back to a weekly pattern.
-    return $this->buildWeekdayRules($dates, $timeSlot);
+    return $weekdayRules;
+  }
+
+  /**
+   * Groups SingleDayRule in an array.
+   *
+   * It does so by combining time slots for rules with the same date.
+   *
+   * @param \Zigazou\DateRules\RuleInterface[] $rules
+   *   The array of rules to merge.
+   *
+   * @return \Zigazou\DateRules\RuleInterface[]
+   *   The merged array of rules.
+   */
+  private function groupSingleDayRules(array $rules): array {
+    $merged = [];
+
+    foreach ($rules as $rule) {
+      if ($rule instanceof SingleDayRule) {
+        $key = $rule->structureKey();
+
+        if (!isset($merged[$key])) {
+          $merged[$key] = new SingleDayRule($rule->date, $rule->timeSlots);
+        }
+        else {
+          $merged[$key] = new SingleDayRule($rule->date, array_merge(
+            $merged[$key]->timeSlots,
+            $rule->timeSlots
+          ));
+        }
+      }
+      else {
+        $merged[] = $rule;
+      }
+    }
+
+    return array_values($merged);
   }
 
   /**

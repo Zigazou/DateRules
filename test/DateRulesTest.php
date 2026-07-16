@@ -314,6 +314,26 @@ class DateRulesTest extends TestCase {
   }
 
   /**
+   * Two single-day events are formatted as two separate lines.
+   */
+  public function testTwoDays(): void {
+    $input = implode("\n", [
+      '2026-08-14 15:00|2026-08-14 16:00',
+      '2026-08-22 15:00|2026-08-22 16:00',
+    ]);
+
+    $this->assertSame(
+      "Vendredi 14 août 2026, de 15h à 16h.\nSamedi 22 août 2026, de 15h à 16h.",
+      $this->parseStringAndFormat($input, FALSE)
+    );
+
+    $this->assertSame(
+      '<p>Vendredi 14 août 2026, de 15h à 16h.</p><p>Samedi 22 août 2026, de 15h à 16h.</p>',
+      $this->parseStringAndFormat($input, TRUE)
+    );
+  }
+
+  /**
    * A 00:00–23:59 slot on the 1st of month yields "toute la journée" and "1er".
    *
    * June 1, 2026 is a Monday.
@@ -452,22 +472,42 @@ class DateRulesTest extends TestCase {
    */
   public function testWeeklyPatternSingleWeekdayNoExceptions(): void {
     $this->assertSame(
-      'Du 6 au 27 juillet 2026 : lundi de 10h à 11h.',
+      "Du 6 au 20 juillet 2026 : lundi de 10h à 11h.",
       $this->parseStringAndFormat(implode("\n", [
         '2026-07-06 10:00|2026-07-06 11:00',
         '2026-07-13 10:00|2026-07-13 11:00',
         '2026-07-20 10:00|2026-07-20 11:00',
-        '2026-07-27 10:00|2026-07-27 11:00',
       ]), FALSE)
     );
 
     $this->assertSame(
-      '<p>Du 6 au 27 juillet 2026 : lundi de 10h à 11h.</p>',
+      "<p>Du 6 au 20 juillet 2026 : lundi de 10h à 11h.</p>",
+      $this->parseStringAndFormat(implode("\n", [
+        '2026-07-06 10:00|2026-07-06 11:00',
+        '2026-07-13 10:00|2026-07-13 11:00',
+        '2026-07-20 10:00|2026-07-20 11:00',
+      ]), TRUE)
+    );
+
+    $this->assertSame(
+      "Du 6 juillet au 3 août 2026 : lundi de 10h à 11h.",
       $this->parseStringAndFormat(implode("\n", [
         '2026-07-06 10:00|2026-07-06 11:00',
         '2026-07-13 10:00|2026-07-13 11:00',
         '2026-07-20 10:00|2026-07-20 11:00',
         '2026-07-27 10:00|2026-07-27 11:00',
+        '2026-08-03 10:00|2026-08-03 11:00',
+      ]), FALSE)
+    );
+
+    $this->assertSame(
+      '<p>Du 6 juillet au 3 août 2026 : lundi de 10h à 11h.</p>',
+      $this->parseStringAndFormat(implode("\n", [
+        '2026-07-06 10:00|2026-07-06 11:00',
+        '2026-07-13 10:00|2026-07-13 11:00',
+        '2026-07-20 10:00|2026-07-20 11:00',
+        '2026-07-27 10:00|2026-07-27 11:00',
+        '2026-08-03 10:00|2026-08-03 11:00',
       ]), TRUE)
     );
   }
@@ -479,7 +519,11 @@ class DateRulesTest extends TestCase {
    */
   public function testWeeklyPatternWithOneException(): void {
     $this->assertSame(
-      'Du 7 au 28 juillet 2026 : mardi de 15h à 16h (sauf le 14 juillet 2026).',
+      implode("\n", [
+        'Mardi 7 juillet 2026, de 15h à 16h.',
+        'Mardi 21 juillet 2026, de 15h à 16h.',
+        'Mardi 28 juillet 2026, de 15h à 16h.',
+      ]),
       $this->parseStringAndFormat(implode("\n", [
         '2026-07-07 15:00|2026-07-07 16:00',
         '2026-07-21 15:00|2026-07-21 16:00',
@@ -488,11 +532,35 @@ class DateRulesTest extends TestCase {
     );
 
     $this->assertSame(
-      '<p>Du 7 au 28 juillet 2026 : mardi de 15h à 16h (sauf le 14 juillet 2026).</p>',
+      implode("", [
+        '<p>Mardi 7 juillet 2026, de 15h à 16h.</p>',
+        '<p>Mardi 21 juillet 2026, de 15h à 16h.</p>',
+        '<p>Mardi 28 juillet 2026, de 15h à 16h.</p>',
+      ]),
       $this->parseStringAndFormat(implode("\n", [
         '2026-07-07 15:00|2026-07-07 16:00',
         '2026-07-21 15:00|2026-07-21 16:00',
         '2026-07-28 15:00|2026-07-28 16:00',
+      ]), TRUE)
+    );
+
+    $this->assertSame(
+      'Du 7 juillet au 4 août 2026 : mardi de 15h à 16h (sauf le 14 juillet 2026).',
+      $this->parseStringAndFormat(implode("\n", [
+        '2026-07-07 15:00|2026-07-07 16:00',
+        '2026-07-21 15:00|2026-07-21 16:00',
+        '2026-07-28 15:00|2026-07-28 16:00',
+        '2026-08-04 15:00|2026-08-04 16:00',
+      ]), FALSE)
+    );
+
+    $this->assertSame(
+      '<p>Du 7 juillet au 4 août 2026 : mardi de 15h à 16h (sauf le 14 juillet 2026).</p>',
+      $this->parseStringAndFormat(implode("\n", [
+        '2026-07-07 15:00|2026-07-07 16:00',
+        '2026-07-21 15:00|2026-07-21 16:00',
+        '2026-07-28 15:00|2026-07-28 16:00',
+        '2026-08-04 15:00|2026-08-04 16:00',
       ]), TRUE)
     );
   }
@@ -525,7 +593,7 @@ class DateRulesTest extends TestCase {
    */
   public function testCrossYearWeeklyPattern(): void {
     $this->assertSame(
-      'Du 27 décembre 2025 au 10 janvier 2026 : samedi de 10h à 11h.',
+      "Du 27 décembre 2025 au 10 janvier 2026 : samedi de 10h à 11h.",
       $this->parseStringAndFormat(implode("\n", [
         '2025-12-27 10:00|2025-12-27 11:00',
         '2026-01-03 10:00|2026-01-03 11:00',
@@ -534,11 +602,31 @@ class DateRulesTest extends TestCase {
     );
 
     $this->assertSame(
-      '<p>Du 27 décembre 2025 au 10 janvier 2026 : samedi de 10h à 11h.</p>',
+      "<p>Du 27 décembre 2025 au 10 janvier 2026 : samedi de 10h à 11h.</p>",
       $this->parseStringAndFormat(implode("\n", [
         '2025-12-27 10:00|2025-12-27 11:00',
         '2026-01-03 10:00|2026-01-03 11:00',
         '2026-01-10 10:00|2026-01-10 11:00',
+      ]), TRUE)
+    );
+
+    $this->assertSame(
+      'Du 27 décembre 2025 au 17 janvier 2026 : samedi de 10h à 11h.',
+      $this->parseStringAndFormat(implode("\n", [
+        '2025-12-27 10:00|2025-12-27 11:00',
+        '2026-01-03 10:00|2026-01-03 11:00',
+        '2026-01-10 10:00|2026-01-10 11:00',
+        '2026-01-17 10:00|2026-01-17 11:00',
+      ]), FALSE)
+    );
+
+    $this->assertSame(
+      '<p>Du 27 décembre 2025 au 17 janvier 2026 : samedi de 10h à 11h.</p>',
+      $this->parseStringAndFormat(implode("\n", [
+        '2025-12-27 10:00|2025-12-27 11:00',
+        '2026-01-03 10:00|2026-01-03 11:00',
+        '2026-01-10 10:00|2026-01-10 11:00',
+        '2026-01-17 10:00|2026-01-17 11:00',
       ]), TRUE)
     );
   }
@@ -557,7 +645,10 @@ class DateRulesTest extends TestCase {
    */
   public function testMultipleTimeSlotsOnSameWeekdayPattern(): void {
     $this->assertSame(
-      'Du 6 au 13 juillet 2026 : lundi de 10h à 12h et de 14h à 18h.',
+      implode("\n", [
+        'Lundi 6 juillet 2026, de 10h à 12h et de 14h à 18h.',
+        'Lundi 13 juillet 2026, de 10h à 12h et de 14h à 18h.',
+      ]),
       $this->parseStringAndFormat(implode("\n", [
         '2026-07-06 10:00|2026-07-06 12:00',
         '2026-07-06 14:00|2026-07-06 18:00',
@@ -567,12 +658,47 @@ class DateRulesTest extends TestCase {
     );
 
     $this->assertSame(
-      '<p>Du 6 au 13 juillet 2026 : lundi de 10h à 12h et de 14h à 18h.</p>',
+      implode("", [
+        '<p>Lundi 6 juillet 2026, de 10h à 12h et de 14h à 18h.</p>',
+        '<p>Lundi 13 juillet 2026, de 10h à 12h et de 14h à 18h.</p>',
+      ]),
       $this->parseStringAndFormat(implode("\n", [
         '2026-07-06 10:00|2026-07-06 12:00',
         '2026-07-06 14:00|2026-07-06 18:00',
         '2026-07-13 10:00|2026-07-13 12:00',
         '2026-07-13 14:00|2026-07-13 18:00',
+      ]), TRUE)
+    );
+
+    $this->assertSame(
+      'Du 6 juillet au 3 août 2026 : lundi de 10h à 12h et de 14h à 18h.',
+      $this->parseStringAndFormat(implode("\n", [
+        '2026-07-06 10:00|2026-07-06 12:00',
+        '2026-07-06 14:00|2026-07-06 18:00',
+        '2026-07-13 10:00|2026-07-13 12:00',
+        '2026-07-13 14:00|2026-07-13 18:00',
+        '2026-07-20 10:00|2026-07-20 12:00',
+        '2026-07-20 14:00|2026-07-20 18:00',
+        '2026-07-27 10:00|2026-07-27 12:00',
+        '2026-07-27 14:00|2026-07-27 18:00',
+        '2026-08-03 10:00|2026-08-03 12:00',
+        '2026-08-03 14:00|2026-08-03 18:00',
+      ]), FALSE)
+    );
+
+    $this->assertSame(
+      '<p>Du 6 juillet au 3 août 2026 : lundi de 10h à 12h et de 14h à 18h.</p>',
+      $this->parseStringAndFormat(implode("\n", [
+        '2026-07-06 10:00|2026-07-06 12:00',
+        '2026-07-06 14:00|2026-07-06 18:00',
+        '2026-07-13 10:00|2026-07-13 12:00',
+        '2026-07-13 14:00|2026-07-13 18:00',
+        '2026-07-20 10:00|2026-07-20 12:00',
+        '2026-07-20 14:00|2026-07-20 18:00',
+        '2026-07-27 10:00|2026-07-27 12:00',
+        '2026-07-27 14:00|2026-07-27 18:00',
+        '2026-08-03 10:00|2026-08-03 12:00',
+        '2026-08-03 14:00|2026-08-03 18:00',
       ]), TRUE)
     );
   }
@@ -652,7 +778,8 @@ class DateRulesTest extends TestCase {
     $this->assertSame(
       implode("\n", [
         'Du 1er au 7 juillet 2026 : tous les jours de 10h à 11h.',
-        'Du 20 au 27 juillet 2026 : lundi de 10h à 11h.',
+        'Lundi 20 juillet 2026, de 10h à 11h.',
+        'Lundi 27 juillet 2026, de 10h à 11h.',
       ]),
       $this->parseStringAndFormat(implode("\n", $lines), FALSE)
     );
@@ -660,7 +787,8 @@ class DateRulesTest extends TestCase {
     $this->assertSame(
       implode("", [
         '<p>Du 1er au 7 juillet 2026 : tous les jours de 10h à 11h.</p>',
-        '<p>Du 20 au 27 juillet 2026 : lundi de 10h à 11h.</p>',
+        '<p>Lundi 20 juillet 2026, de 10h à 11h.</p>',
+        '<p>Lundi 27 juillet 2026, de 10h à 11h.</p>',
       ]),
       $this->parseStringAndFormat(implode("\n", $lines), TRUE)
     );

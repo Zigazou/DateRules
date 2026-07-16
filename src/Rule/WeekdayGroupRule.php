@@ -43,4 +43,19 @@ final class WeekdayGroupRule implements RuleInterface {
     return [];
   }
 
+  /**
+   * {@inheritdoc}
+   */
+  public function showRule(int $indentLevel = 0): void {
+    $indent = str_repeat('  ', $indentLevel);
+    $start  = $this->startDate->format('Y-m-d');
+    $end    = $this->endDate->format('Y-m-d');
+
+    print("{$indent}WeekdayGroupRule {$start} -> {$end}:\n");
+    foreach ($this->subRules as $subRule) {
+      $subRule->showRule($indentLevel + 1);
+    }
+
+  }
+
 }

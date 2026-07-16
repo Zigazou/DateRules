@@ -8,6 +8,7 @@ use Zigazou\DateRules\Rule\DateRangeRule;
 use Zigazou\DateRules\Rule\RuleInterface;
 use Zigazou\DateRules\Rule\WeekdayGroupRule;
 use Zigazou\DateRules\Rule\WeekdayRule;
+use Zigazou\DateRules\Rule\SingleDayRule;
 use Zigazou\DateRules\RuleSet;
 use Zigazou\DateRules\TimeSlot;
 
@@ -135,6 +136,7 @@ final class FrenchFormatter implements FormatterInterface {
       $rule instanceof WeekdayGroupRule => $this->formatWeekdayGroupRule($rule),
       $rule instanceof WeekdayRule      => $this->formatWeekdayRule($rule),
       $rule instanceof DateRangeRule    => $this->formatDateRangeRule($rule),
+      $rule instanceof SingleDayRule    => $this->formatSingleDayRule($rule),
       default                           => '',
     };
   }
@@ -192,6 +194,38 @@ final class FrenchFormatter implements FormatterInterface {
     else {
       $result = ucfirst($range) . ' : ' . $days . ' de ' . $slots;
     }
+
+    return $result . '.';
+  }
+
+  /**
+   * Formats a SingleDayRule as a human-readable French string.
+   *
+   * @param \Zigazou\DateRules\Rule\SingleDayRule $rule
+   *   The single day rule to format.
+   *
+   * @return string
+   *   The formatted rule string.
+   */
+  private function formatSingleDayRule(SingleDayRule $rule): string {
+    $slots = $this->formatTimeSlots($rule->timeSlots);
+
+    // Single day: "Vendredi 10 juillet 2026, de 10h à 11h.".
+    $dayName = ucfirst(
+      self::WEEKDAY_NAMES[(int) $rule->date->format('N')]
+    );
+
+    // All-day slot (00:00–23:59): "Mercredi 15 juillet 2026, toute la
+    // journée.".
+    if ($this->isAllDay($rule->timeSlots)) {
+      return $dayName
+        . ' ' . $this->formatFullDate($rule->date)
+        . ', toute la journée.';
+    }
+
+    $result = $dayName
+      . ' ' . $this->formatFullDate($rule->date)
+      . ', de ' . $slots;
 
     return $result . '.';
   }

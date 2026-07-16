@@ -44,4 +44,28 @@ final class DateRangeRule implements RuleInterface {
     return $this->exceptions;
   }
 
+  /**
+   * {@inheritdoc}
+   */
+  public function showRule(int $indentLevel = 0): void {
+    $indent  = str_repeat('  ', $indentLevel);
+    $indent2 = str_repeat('  ', $indentLevel + 1);
+    $indent3 = str_repeat('  ', $indentLevel + 2);
+    $start   = $this->startDate->format('Y-m-d');
+    $end     = $this->endDate->format('Y-m-d');
+
+    print("{$indent}DateRangeRule {$start} -> {$end}:\n");
+    print("{$indent2}Time slots:\n");
+    foreach ($this->timeSlots as $timeSlot) {
+      print("{$indent3}- {$timeSlot->startHour}:{$timeSlot->startMinute} -> {$timeSlot->endHour}:{$timeSlot->endMinute}\n");
+    }
+
+    if (!empty($this->exceptions)) {
+      print("{$indent2}Exceptions:\n");
+      foreach ($this->exceptions as $exception) {
+        print("{$indent3}- " . $exception->format('Y-m-d') . "\n");
+      }
+    }
+  }
+
 }

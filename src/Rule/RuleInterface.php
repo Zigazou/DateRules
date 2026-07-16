@@ -25,4 +25,9 @@ interface RuleInterface {
    */
   public function getExceptions(): array;
 
+  /**
+   * Displays the rule in a human-readable format.
+   */
+  public function showRule(int $indentLevel = 0): void;
+
 }
